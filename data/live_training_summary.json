@@ -1,0 +1,79 @@
+{
+  "timestamp": "2025-08-27T20:33:38.521673",
+  "duration_minutes": 15,
+  "system_version": "PSC_ALIGNED_v1.0",
+  "integration_features": [
+    "PSC ratio calculations",
+    "Timer-based trading windows",
+    "Bidirectional signal generation",
+    "ML confidence validation",
+    "SuperP leverage optimization"
+  ],
+  "metrics": {
+    "training_samples": 636,
+    "signals_generated": 330,
+    "signal_rate": 0.5188679245283019,
+    "coins_analyzed": 6,
+    "avg_spread_bps": 3.1347885796555337,
+    "avg_imbalance": 0.031204001655833,
+    "ton_price": 3.173,
+    "psc_integration": true,
+    "superp_enabled": true,
+    "max_leverage": 10000.0,
+    "long_signals": 219,
+    "short_signals": 111,
+    "avg_psc_ratio": 6.269699999999999,
+    "avg_confidence": 0.5862373830725518,
+    "avg_leverage": 2093.6280112121212,
+    "strong_signals": 128,
+    "entry_window_signals": 330
+  },
+  "trading_coins": [
+    {
+      "symbol": "BTC",
+      "volatility": "Medium",
+      "psc_weight": 1.0,
+      "ml_priority": "high"
+    },
+    {
+      "symbol": "ETH",
+      "volatility": "Medium",
+      "psc_weight": 1.0,
+      "ml_priority": "high"
+    },
+    {
+      "symbol": "SOL",
+      "volatility": "High",
+      "psc_weight": 0.8,
+      "ml_priority": "medium"
+    },
+    {
+      "symbol": "SHIB",
+      "volatility": "Very High",
+      "psc_weight": 0.6,
+      "ml_priority": "medium"
+    },
+    {
+      "symbol": "DOGE",
+      "volatility": "High",
+      "psc_weight": 0.7,
+      "ml_priority": "medium"
+    },
+    {
+      "symbol": "PEPE",
+      "volatility": "Extreme",
+      "psc_weight": 0.5,
+      "ml_priority": "low"
+    }
+  ],
+  "psc_config": {
+    "min_signal_ratio": 6.5,
+    "min_confidence_threshold": 0.3,
+    "ton_price": 3.173
+  },
+  "superp_config": {
+    "enabled": true,
+    "max_leverage": 10000.0,
+    "time_limit_minutes": 10
+  }
+}

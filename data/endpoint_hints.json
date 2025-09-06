@@ -1,0 +1,6 @@
+[
+  "https://api.superp.xyz/psc/quotes.*",
+  "https://noliquidation.superp.xyz/api/.*",
+  ".*psc.*quotes.*",
+  ".*superp.*api.*"
+]
