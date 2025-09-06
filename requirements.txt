@@ -1,0 +1,49 @@
+# PSC Trading System - Cloud Deployment Dependencies
+# Streamlined for Render deployment compatibility
+
+# ===== CORE TRADING DEPENDENCIES =====
+pandas>=1.5.0
+numpy>=1.21.0
+requests>=2.28.0
+aiohttp>=3.8.0
+pydantic>=1.10.0
+psutil>=5.9.0
+
+# ===== MACHINE LEARNING =====
+scikit-learn>=1.3.0
+joblib>=1.3.0
+lightgbm>=4.0.0
+
+# ===== TELEGRAM INTEGRATION =====
+python-telegram-bot>=20.0
+loguru>=0.7.0
+
+# ===== TRADINGVIEW INTEGRATION =====
+beautifulsoup4>=4.11.0
+lxml>=4.9.0
+
+# ===== CONFIGURATION & UTILITIES =====
+PyYAML>=6.0.0
+click>=8.0.0
+
+# ===== HTTP AND WEB =====
+urllib3>=1.26.0
+
+# ===== JWT SUPPORT =====
+PyJWT>=2.8.0
+
+# ===== DEVELOPMENT/OPTIONAL =====
+# Commented out to avoid compatibility issues on cloud platforms
+# matplotlib>=3.5.0
+# plotly>=5.0.0
+# streamlit>=1.28.0
+# dash>=2.0.0
+# playwright>=1.40.0
+# nest_asyncio>=1.5.0
+
+# ===== TON BLOCKCHAIN (DISABLED FOR CLOUD) =====
+# These packages cause Python version conflicts on Render
+# Uncomment if TON integration is needed and compatible versions are available
+# cryptography>=41.0.0
+# base58>=2.1.1
+# nacl>=1.5.0

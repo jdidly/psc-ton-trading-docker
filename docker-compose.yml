@@ -1,0 +1,103 @@
+# 🐳 PSC Trading System - Docker Compose
+version: '3.8'
+
+services:
+  # Main trading system
+  psc-trading:
+    build: .
+    container_name: psc-trading-system
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Database connection
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/psc_trading
+      
+      # Trading configuration (set in .env file)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      INITIAL_BALANCE: ${INITIAL_BALANCE:-1000}
+      MIN_CONFIDENCE: ${MIN_CONFIDENCE:-0.60}
+      
+      # Disable timer window notifications (only show actual signals)
+      DISABLE_TIMER_ALERTS: true
+      PSC_THRESHOLD: ${PSC_THRESHOLD:-0.001}
+      
+      # ML configuration
+      ML_TRAINING_ENABLED: ${ML_TRAINING_ENABLED:-true}
+      ML_UPDATE_INTERVAL: ${ML_UPDATE_INTERVAL:-3600}
+      PREDICTION_CONFIDENCE_THRESHOLD: ${PREDICTION_CONFIDENCE_THRESHOLD:-0.65}
+      
+      # System configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      HEALTH_CHECK_PORT: 8080
+      DATA_RETENTION_DAYS: ${DATA_RETENTION_DAYS:-30}
+    
+    volumes:
+      - trading_data:/app/data
+      - trading_logs:/app/logs
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    networks:
+      - psc-network
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: psc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: psc_trading
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # Remove in production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - psc-network
+
+  # Full Web Dashboard (Streamlit)
+  dashboard:
+    build: .
+    container_name: psc-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/psc_trading
+      # Dashboard-specific config
+      STREAMLIT_SERVER_PORT: 8501
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
+      STREAMLIT_SERVER_HEADLESS: true
+    command: ["streamlit", "run", "Dashboard/dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+    volumes:
+      - trading_data:/app/data
+      - trading_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - psc-network
+
+# Persistent volumes
+volumes:
+  postgres_data:
+    driver: local
+  trading_data:
+    driver: local
+  trading_logs:
+    driver: local
+
+# Network
+networks:
+  psc-network:
+    driver: bridge

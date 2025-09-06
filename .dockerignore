@@ -1,0 +1,38 @@
+# Docker ignore file
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.gitignore
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Project specific
+Tools/
+Tests/
+Archive/
+backtesting/
+deployment/
+docs_clean/
+.venv/
+.env
+*.tmp
+*.bak
+
+# Data files (will be created in volumes)
+data/*.csv
+data/*.json
+logs/*.log
+logs/*.csv

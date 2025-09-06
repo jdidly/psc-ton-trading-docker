@@ -1,0 +1,85 @@
+# Trading Configuration
+trading:
+  min_signal_ratio: 6.5  # UPDATED: Logarithmic scale threshold (was 1.25)
+  min_confidence_threshold: 0.3
+  confidence_threshold: 0.7  # Dashboard expects this key
+  max_positions: 5
+  position_timeout_minutes: 10
+  scan_interval: 30  # Dashboard expects this key
+  ratio_threshold: 1.25
+  position_size: 1000
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_leverage: 1000
+  min_leverage: 10
+  
+# Superp Configuration  
+superp:
+  enabled: true
+  min_buy_in: 10.0
+  max_buy_in: 100.0
+  max_leverage: 10000.0
+  conservative_range: [1, 100]
+  moderate_range: [100, 1000]
+  aggressive_range: [1000, 5000]
+  extreme_range: [5000, 10000]
+  time_limit_minutes: 10
+  
+# ML Engine Settings
+ml:
+  enabled: true
+  scan_interval_seconds: 45
+  prediction_history_limit: 1000
+  model_retrain_interval_hours: 24
+  retrain_interval: 50  # Dashboard expects this key
+  confidence_threshold: 0.3
+  confidence_boost: 0.1
+  feature_count: 9
+  min_return_threshold: 0.001  # 0.1%
+
+# ML Microstructure Trainer Settings
+ml_microstructure:
+  enabled: true
+  min_signal_ratio: 6.5
+  min_confidence: 0.6  # Higher threshold for microstructure signals
+  max_leverage: 10000.0
+  timer_limit_minutes: 10
+  trading_coins: ['BTC', 'ETH', 'SOL', 'SHIB', 'DOGE', 'PEPE']
+  signal_timeout_minutes: 2  # How long signals remain valid
+  entry_window_priority: true  # Prioritize signals in ENTRY_WINDOW
+  microstructure_weight: 0.8  # Weight for microstructure scoring
+  
+# TradingView Integration
+tradingview:
+  timeframes: ["1m", "5m", "10m"]
+  analysis_interval_seconds: 30
+  confirmation_threshold: 0.4
+  
+# Risk Management
+risk:
+  max_total_exposure: 1000.0
+  max_positions_per_asset: 2
+  emergency_stop_loss_percent: 0.95
+  
+# Monitoring
+monitoring:
+  health_check_interval_seconds: 60
+  log_level: "INFO"
+  enable_performance_tracking: true
+  
+# Telegram Configuration
+telegram:
+  enabled: true
+  send_signals: true
+  send_trades: true
+  send_status: true
+  
+telegram_token: "8267219396:AAEtZuCB3bmz75TS15jENKy_rikVOa23r2o"
+telegram_chat_id: "8330608685"
+
+# Notifications
+notifications:
+  telegram_enabled: true
+  high_confidence_only: false
+  timer_alerts: false
+  timer_notifications: false
