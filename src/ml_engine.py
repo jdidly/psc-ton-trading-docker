@@ -11,8 +11,15 @@ import os
 import pickle
 import random
 import math
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+
+# Add parent directory to path for prediction optimizer
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+if str(parent_dir) not in sys.path:
+    sys.path.insert(0, str(parent_dir))
 
 # ML imports with fallback handling
 try:
@@ -634,7 +641,7 @@ class MLEngine:
             return 'low'
     
     def record_prediction(self, prediction, actual_outcome=None):
-        """Record prediction for learning"""
+        """Record prediction for learning with optimization to reduce database load"""
         try:
             timestamp = datetime.now().isoformat()
             record = {
@@ -643,10 +650,53 @@ class MLEngine:
                 'actual_outcome': actual_outcome
             }
             
+            # Always add to memory for learning
             self.predictions.append(record)
             
-            # Save to file
-            self.save_prediction_history()
+            # Optimized database storage - only store high-quality predictions
+            if hasattr(self, 'data_manager') and self.data_manager:
+                try:
+                    # Import optimizer (lazy import to avoid circular dependencies)
+                    try:
+                        from prediction_optimizer import prediction_optimizer
+                        should_store = prediction_optimizer.should_store_prediction(prediction)
+                    except ImportError:
+                        # Fallback to simple filtering if optimizer not available
+                        confidence = prediction.get('confidence', 0.0)
+                        expected_return = abs(prediction.get('expected_return', 0.0))
+                        signal = prediction.get('signal', 'HOLD')
+                        should_store = (confidence >= 0.25 and expected_return >= 0.002 and signal != 'HOLD')
+                    
+                    if should_store:
+                        # Convert signal to direction format expected by database
+                        signal = prediction.get('signal', 'HOLD')
+                        direction = 'LONG' if signal == 'BUY' else ('SHORT' if signal == 'SELL' else 'HOLD')
+                        
+                        signal_id = self.data_manager.log_ml_signal(
+                            coin=prediction.get('symbol', 'BTCUSDT'),
+                            price=prediction.get('entry_price', 50000.0),  # Default price if not provided
+                            confidence=prediction.get('confidence', 0.5),
+                            direction=direction,
+                            ml_prediction=prediction.get('prediction', 0.5),
+                            ml_features={
+                                'expected_return': prediction.get('expected_return', 0.0),
+                                'features_used': prediction.get('features_used', 0),
+                                'model_type': prediction.get('model_type', 'ml_engine'),
+                                'win_probability': prediction.get('win_probability', 0.5),
+                                'category': prediction.get('category', 'MEDIUM'),
+                                'timestamp': prediction.get('timestamp', datetime.now()).isoformat() if hasattr(prediction.get('timestamp', datetime.now()), 'isoformat') else str(prediction.get('timestamp', datetime.now()))
+                            }
+                        )
+                        logger.info(f"💾 High-quality prediction saved to database: {signal_id}")
+                    else:
+                        logger.debug(f"🔍 Prediction filtered out - keeping database lean")
+                        
+                except Exception as db_error:
+                    logger.warning(f"Could not save to database: {db_error}")
+            
+            # Save to file (fallback) - only for actual outcomes
+            if actual_outcome is not None:
+                self.save_prediction_history()
             
             # Update models if we have actual outcome
             if actual_outcome is not None:
@@ -657,7 +707,7 @@ class MLEngine:
                     self.retrain_models()
             
             # Safe logging - handle missing recommendation field
-            recommendation = prediction.get('recommendation', prediction.get('direction', 'UNKNOWN'))
+            recommendation = prediction.get('recommendation', prediction.get('signal', 'UNKNOWN'))
             confidence = prediction.get('confidence', 0.0)
             logger.info(f"📊 Prediction recorded: {recommendation} (confidence: {confidence:.2f})")
             
@@ -1091,7 +1141,7 @@ class MLEngine:
             self.predictions = []
             self.performance_history = []
             
-            # Try to load from database first (preferred method)
+            # ONLY load from database - no CSV/JSON fallback
             if self.data_manager:
                 database_loaded = self._load_from_database()
                 if database_loaded > 0:
@@ -1100,12 +1150,12 @@ class MLEngine:
                     # If we have enough data, consider triggering a retrain
                     if database_loaded >= 30:
                         logger.info(f"🧠 Sufficient prediction history ({database_loaded}) - models ready for enhanced training")
-                    return
                 else:
-                    logger.warning("📂 No historical data found in database, falling back to file loading...")
+                    logger.info("📂 No historical data in database yet - system will accumulate data during operation")
+            else:
+                logger.warning("⚠️  No database manager provided - ML engine will run without historical data")
             
-            # Fallback to file loading if database unavailable or empty
-            self._load_from_files()
+            # Never fallback to CSV/JSON files - database-only operation
             
         except Exception as e:
             logger.error(f"Error loading prediction history: {e}")
@@ -1116,7 +1166,7 @@ class MLEngine:
         """Load prediction history from database"""
         try:
             # Get historical ML signals from database - load ALL signals for training
-            signals = self.data_manager.db.execute_query(
+            signals = self.data_manager.execute_query(
                 "SELECT * FROM signals WHERE signal_type IN ('ML_SIGNAL', 'ML_HISTORICAL') ORDER BY created_at DESC LIMIT 5000"
             )
             
@@ -1247,41 +1297,224 @@ class MLEngine:
     
     def predict(self, features):
         """
-        Legacy predict method for PSC trader compatibility
-        Expected format: [psc_price, ton_price, ratio]
+        Modern ML prediction method - handles both legacy PSC format and modern indicators
+        
+        Args:
+            features: Can be:
+                - Legacy: [psc_price, ton_price, ratio] 
+                - Modern: {'rsi_14': float, 'macd_signal': float, 'bb_percent': float, ...}
         """
         try:
-            if not isinstance(features, (list, tuple)) or len(features) < 3:
-                raise ValueError("Features must be list/tuple with at least 3 elements [psc_price, ton_price, ratio]")
-            
-            psc_price, ton_price, ratio = features[:3]
-            
-            # Use our advanced prediction method
-            prediction_result = self.predict_trade_outcome(psc_price, ton_price, ratio)
-            
-            # Convert to legacy format expected by PSC trader
-            return {
-                'confidence': prediction_result['confidence'],
-                'prediction': prediction_result['win_probability'],
-                'expected_return': prediction_result['expected_return'],
-                'win_probability': prediction_result['win_probability'],
-                'features_used': prediction_result.get('features_used', 9),
-                'model_type': prediction_result.get('model_used', 'ml_engine'),
-                'timestamp': datetime.now()
-            }
-            
+            # Handle modern dictionary format (preferred)
+            if isinstance(features, dict):
+                return self._predict_from_indicators(features)
+                
+            # Handle legacy PSC format for backwards compatibility
+            elif isinstance(features, (list, tuple)) and len(features) >= 3:
+                psc_price, ton_price, ratio = features[:3]
+                return self._predict_from_prices(psc_price, ton_price, ratio)
+                
+            else:
+                raise ValueError("Features must be dict with indicators or list/tuple with [psc_price, ton_price, ratio]")
+                
         except Exception as e:
-            logger.error(f"Legacy predict method error: {e}")
+            logger.error(f"Prediction error: {e}")
             # Fallback prediction
             return {
                 'confidence': 0.5,
                 'prediction': 0.5,
                 'expected_return': 0.02,
                 'win_probability': 0.5,
-                'features_used': 3,
+                'features_used': len(features) if hasattr(features, '__len__') else 0,
                 'model_type': 'fallback',
-                'timestamp': datetime.now()
+                'timestamp': datetime.now(),
+                'signal': None
             }
+    
+    def _predict_from_indicators(self, indicators):
+        """Modern prediction from technical indicators"""
+        try:
+            # Extract key indicators with defaults
+            rsi = indicators.get('rsi_14', 50.0)
+            macd = indicators.get('macd_signal', 0.0)
+            bb_percent = indicators.get('bb_percent', 0.5)
+            volume_ratio = indicators.get('volume_sma_ratio', 1.0)
+            price_change = indicators.get('price_change_pct', 0.0)
+            volatility = indicators.get('volatility', 0.15)
+            
+            # Calculate confidence based on indicator strength
+            confidence = self._calculate_indicator_confidence(rsi, macd, bb_percent, volume_ratio, price_change, volatility)
+            
+            # Determine signal based on indicators
+            signal = self._determine_signal_from_indicators(rsi, macd, bb_percent, volume_ratio, price_change)
+            
+            # Enhanced prediction using database-driven logic
+            win_probability = max(0.3, min(0.8, confidence + 0.1))
+            expected_return = confidence * 0.05  # 0-5% expected return based on confidence
+            
+            prediction_result = {
+                'confidence': confidence,
+                'prediction': win_probability,
+                'expected_return': expected_return,
+                'win_probability': win_probability,
+                'features_used': len(indicators),
+                'model_type': 'ml_indicators',
+                'timestamp': datetime.now().isoformat(),
+                'signal': signal,
+                'category': self._categorize_confidence(confidence)
+            }
+            
+            # Store prediction for learning
+            self.record_prediction(prediction_result)
+            
+            return prediction_result
+            
+        except Exception as e:
+            logger.error(f"Indicator prediction error: {e}")
+            return self._fallback_prediction_dict()
+    
+    def _predict_from_prices(self, psc_price, ton_price, ratio):
+        """Legacy prediction from PSC/TON prices"""
+        try:
+            # Use existing prediction method
+            prediction_result = self.predict_trade_outcome(psc_price, ton_price, ratio)
+            
+            # Convert to standard format
+            formatted_result = {
+                'confidence': prediction_result['confidence'],
+                'prediction': prediction_result['win_probability'],
+                'expected_return': prediction_result['expected_return'],
+                'win_probability': prediction_result['win_probability'],
+                'features_used': prediction_result.get('features_used', 9),
+                'model_type': prediction_result.get('model_used', 'ml_psc'),
+                'timestamp': datetime.now().isoformat(),
+                'signal': self._determine_signal_from_confidence(prediction_result['confidence']),
+                'category': self._categorize_confidence(prediction_result['confidence'])
+            }
+            
+            # Store prediction for learning
+            self.record_prediction(formatted_result)
+            
+            return formatted_result
+            
+        except Exception as e:
+            logger.error(f"PSC prediction error: {e}")
+            return self._fallback_prediction_dict()
+    
+    def _calculate_indicator_confidence(self, rsi, macd, bb_percent, volume_ratio, price_change, volatility):
+        """Calculate confidence from technical indicators"""
+        confidence_factors = []
+        
+        # RSI factor (0-1 based on how extreme RSI is)
+        if rsi <= 30 or rsi >= 70:
+            confidence_factors.append(0.8)  # High confidence for oversold/overbought
+        elif rsi <= 40 or rsi >= 60:
+            confidence_factors.append(0.6)  # Medium confidence
+        else:
+            confidence_factors.append(0.4)  # Lower confidence in neutral zone
+        
+        # MACD factor
+        confidence_factors.append(min(0.8, abs(macd) * 10))  # Strong signals give higher confidence
+        
+        # Bollinger Bands factor
+        if bb_percent <= 0.1 or bb_percent >= 0.9:
+            confidence_factors.append(0.7)  # Near bands = higher confidence
+        else:
+            confidence_factors.append(0.5)
+        
+        # Volume factor
+        if volume_ratio > 1.5:
+            confidence_factors.append(0.7)  # High volume = higher confidence
+        elif volume_ratio > 1.2:
+            confidence_factors.append(0.6)
+        else:
+            confidence_factors.append(0.4)
+        
+        # Price change factor
+        confidence_factors.append(min(0.8, abs(price_change) / 10))  # Strong moves = higher confidence
+        
+        # Volatility factor (moderate volatility is best)
+        if 0.1 <= volatility <= 0.25:
+            confidence_factors.append(0.7)  # Good volatility range
+        else:
+            confidence_factors.append(0.5)
+        
+        # Average all factors
+        final_confidence = sum(confidence_factors) / len(confidence_factors)
+        return max(0.1, min(0.95, final_confidence))
+    
+    def _determine_signal_from_indicators(self, rsi, macd, bb_percent, volume_ratio, price_change):
+        """Determine trading signal from indicators"""
+        buy_signals = 0
+        sell_signals = 0
+        
+        # RSI signals
+        if rsi <= 30:
+            buy_signals += 2  # Strong buy
+        elif rsi <= 40:
+            buy_signals += 1  # Weak buy
+        elif rsi >= 70:
+            sell_signals += 2  # Strong sell
+        elif rsi >= 60:
+            sell_signals += 1  # Weak sell
+        
+        # MACD signals
+        if macd > 0.1:
+            buy_signals += 1
+        elif macd < -0.1:
+            sell_signals += 1
+        
+        # Bollinger Bands signals
+        if bb_percent <= 0.1:
+            buy_signals += 1  # Near lower band
+        elif bb_percent >= 0.9:
+            sell_signals += 1  # Near upper band
+        
+        # Price momentum
+        if price_change > 2:
+            buy_signals += 1
+        elif price_change < -2:
+            sell_signals += 1
+        
+        # Determine final signal
+        if buy_signals > sell_signals + 1:
+            return 'BUY'
+        elif sell_signals > buy_signals + 1:
+            return 'SELL'
+        else:
+            return 'HOLD'
+    
+    def _determine_signal_from_confidence(self, confidence):
+        """Determine signal from confidence level"""
+        if confidence >= 0.7:
+            return 'BUY'  # High confidence usually means opportunity
+        elif confidence <= 0.3:
+            return 'SELL'  # Low confidence might mean avoid/sell
+        else:
+            return 'HOLD'
+    
+    def _categorize_confidence(self, confidence):
+        """Categorize confidence level with enhanced thresholds"""
+        if confidence >= 0.65:  # Enhanced threshold
+            return 'HIGH'
+        elif confidence >= 0.50:  # Enhanced threshold  
+            return 'MEDIUM'
+        else:
+            return 'LOW'
+    
+    def _fallback_prediction_dict(self):
+        """Standardized fallback prediction"""
+        return {
+            'confidence': 0.5,
+            'prediction': 0.5,
+            'expected_return': 0.02,
+            'win_probability': 0.5,
+            'features_used': 0,
+            'model_type': 'fallback',
+            'timestamp': datetime.now(),
+            'signal': 'HOLD',
+            'category': 'MEDIUM'
+        }
     
     def update_prediction_outcome(self, prediction_timestamp, actual_outcome, actual_return):
         """

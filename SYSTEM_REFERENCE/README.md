@@ -11,10 +11,13 @@
 ### **🔍 Understanding Files**
 - `01_SYSTEM_ARCHITECTURE.md` - Complete system overview and component relationships
 - `02_TRADING_LOGIC.md` - Core trading algorithms and decision processes  
-- `03_ML_ENGINE_GUIDE.md` - Machine learning integration and prediction system
-- `04_DATABASE_ARCHITECTURE.md` - Unified database system and data management
+- `03_ML_ENGINE_GUIDE.md` - Machine learning integration and prediction system **🆕 Updated with Smart Optimization**
+- `04_DATABASE_ARCHITECTURE.md` - Unified database system and data management **🆕 Updated with Storage Optimization**
 - `05_INTEGRATED_ACCURACY_SYSTEM.md` - Multi-layer signal validation and consensus scoring
 - `07_ML_MICROSTRUCTURE_SYSTEM.md` - Advanced microstructure analysis system
+
+### **📋 Change Tracking**
+- `../CHANGELOG.md` - **🆕 NEW** Complete system evolution and version history
 
 ### **⚡ Quick Commands**
 - `python psc_ton_system.py` - Start main trading system

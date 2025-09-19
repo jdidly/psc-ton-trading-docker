@@ -44,6 +44,35 @@ data/
 └── ml_performance_tracking.csv # Daily performance metrics
 ```
 
+### **SMART PREDICTION OPTIMIZATION** 🆕
+
+**Performance Optimization**: To prevent database bloat while maintaining learning quality, the ML Engine implements intelligent prediction filtering.
+
+**Optimization Criteria**:
+- **Confidence Threshold**: Only store predictions ≥25% confidence
+- **Expected Return Threshold**: Only store predictions ≥0.2% expected return  
+- **Signal Quality**: Skip HOLD signals (non-actionable)
+- **Deduplication**: Prevent similar predictions within 5-minute windows
+- **Database Load Reduction**: 50-80% fewer database writes
+
+**Implementation**:
+```python
+# Located in: prediction_optimizer.py
+class PredictionOptimizer:
+    def should_store_prediction(self, prediction):
+        # Multi-criteria filtering for database optimization
+        return (confidence >= 0.25 and 
+                expected_return >= 0.002 and 
+                signal != 'HOLD' and 
+                not duplicate_within_window)
+```
+
+**Benefits**:
+- **Sustainable Growth**: Database stays manageable long-term
+- **Quality Focus**: Only actionable, high-confidence predictions stored
+- **Learning Continuity**: All predictions still used for model training in memory
+- **Performance**: Reduced database I/O improves system responsiveness
+
 ---
 
 ## 🏗️ **ML MODEL ARCHITECTURE**

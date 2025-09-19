@@ -590,6 +590,53 @@ class PSCDatabase:
             stats['db_size_mb'] = self.db_path.stat().st_size / (1024 * 1024)
             
             return stats
+    
+    def execute_query(self, query: str, params: tuple = None) -> List[Dict]:
+        """Execute a query and return results as list of dictionaries"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row  # Enable row access by column name
+                cursor = conn.execute(query, params or ())
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error executing query: {e}")
+            return []
+    
+    def get_ml_signals(self, limit: int = 1000):
+        """Get ML signals from database for training"""
+        import pandas as pd
+        try:
+            query = """
+                SELECT * FROM signals 
+                WHERE signal_type IN ('ML_SIGNAL', 'ML_HISTORICAL')
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """
+            results = self.execute_query(query, (limit,))
+            return pd.DataFrame(results)
+        except Exception as e:
+            logger.error(f"Error getting ML signals: {e}")
+            return pd.DataFrame()
+    
+    def get_ml_predictions(self, limit: int = 1000):
+        """Get ML predictions from database for validation"""
+        import pandas as pd
+        try:
+            # Get validations with their associated signal data
+            query = """
+                SELECT v.*, s.coin, s.signal_type, s.direction, s.confidence, s.ml_prediction
+                FROM validations v
+                JOIN signals s ON v.signal_id = s.id
+                WHERE s.signal_type LIKE '%ML%'
+                ORDER BY v.created_at DESC
+                LIMIT ?
+            """
+            results = self.execute_query(query, (limit,))
+            return pd.DataFrame(results)
+        except Exception as e:
+            logger.error(f"Error getting ML predictions: {e}")
+            return pd.DataFrame()
 
 # Example usage and testing
 if __name__ == "__main__":

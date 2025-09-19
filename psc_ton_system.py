@@ -435,44 +435,26 @@ class PSCTONTradingBot:
             except Exception as e:
                 logger.error(f"Failed to initialize prediction validator: {e}")
         
-        # Initialize ML Microstructure Trainer with database integration
+        # Initialize ML Microstructure Trainer with database integration - DATABASE ONLY
         self.ml_microstructure_trainer = None
         if ML_MICROSTRUCTURE_AVAILABLE:
             try:
-                # Try with data_manager parameter first (new version)
-                logger.debug("Attempting LiveMicrostructureTrainer with database integration...")
+                # Database-only initialization - no fallback modes
+                logger.debug("Initializing LiveMicrostructureTrainer with database integration...")
                 self.ml_microstructure_trainer = LiveMicrostructureTrainer(data_manager=self.data_manager)
                 
-                # Check if the trainer was properly initialized with database
-                if hasattr(self.ml_microstructure_trainer, 'data_manager') and self.ml_microstructure_trainer.data_manager is not None:
-                    logger.info("🧠 ML Microstructure Trainer initialized with database integration")
-                    logger.info("🎯 PSC-ML integration enabled for enhanced signal quality")
-                else:
-                    logger.warning("🧠 ML Microstructure Trainer initialized but database connection not detected")
-                    logger.warning("⚠️ Database integration may not be fully operational")
+                # Verify database integration
+                if not hasattr(self.ml_microstructure_trainer, 'data_manager') or self.ml_microstructure_trainer.data_manager is None:
+                    raise ValueError("Microstructure trainer failed to initialize with database - database-only mode required")
+                
+                logger.info("🧠 ML Microstructure Trainer initialized with database integration")
+                logger.info("🎯 PSC-ML integration enabled for enhanced signal quality")
                     
-            except TypeError as te:
-                logger.debug(f"TypeError during microstructure trainer init: {te}")
-                if "unexpected keyword argument 'data_manager'" in str(te):
-                    try:
-                        # Fall back to old version without data_manager
-                        self.ml_microstructure_trainer = LiveMicrostructureTrainer()
-                        logger.info("🧠 ML Microstructure Trainer initialized (legacy mode without database)")
-                        logger.warning("⚠️ Using legacy microstructure trainer - database integration disabled")
-                    except Exception as e2:
-                        logger.error(f"Failed to initialize ML microstructure trainer (fallback): {e2}")
-                else:
-                    logger.error(f"Failed to initialize ML microstructure trainer: {te}")
             except Exception as e:
-                # Any other error - still try fallback
-                logger.debug(f"Exception during microstructure trainer init: {e}")
-                logger.warning(f"ML microstructure trainer database init issue: {e}")
-                try:
-                    self.ml_microstructure_trainer = LiveMicrostructureTrainer()
-                    logger.info("🧠 ML Microstructure Trainer initialized (legacy mode without database)")
-                    logger.warning("⚠️ Using legacy microstructure trainer - database integration disabled")
-                except Exception as e2:
-                    logger.error(f"Failed to initialize ML microstructure trainer (complete failure): {e2}")
+                logger.error(f"❌ Failed to initialize ML microstructure trainer with database: {e}")
+                logger.error("❌ DATABASE-ONLY MODE: No fallback - system requires database integration")
+                # Don't initialize without database - this ensures database-only operation
+                self.ml_microstructure_trainer = None
                 
         # Database system handles all data persistence
         
@@ -853,6 +835,14 @@ class PSCTONTradingBot:
     def log_signal(self, coin, price, ratio, confidence, direction, exit_estimate, ml_prediction):
         """Log a PSC signal to database (replaces CSV logging)"""
         try:
+            # Handle ml_prediction - extract float value if it's a dict
+            if isinstance(ml_prediction, dict):
+                ml_prediction_value = ml_prediction.get('prediction', ml_prediction.get('confidence', 0.0))
+                ml_features = ml_prediction  # Store full dict as features
+            else:
+                ml_prediction_value = float(ml_prediction) if ml_prediction is not None else 0.0
+                ml_features = None
+            
             # Log to database
             signal_id = self.data_manager.log_psc_signal(
                 coin=coin,
@@ -861,8 +851,9 @@ class PSCTONTradingBot:
                 confidence=confidence,
                 direction=direction,
                 exit_estimate=exit_estimate,
-                ml_prediction=ml_prediction,
-                market_conditions=self.get_market_conditions()
+                ml_prediction=ml_prediction_value,
+                market_conditions=self.get_market_conditions(),
+                ml_features=ml_features
             )
             
             # Legacy CSV backup (optional)
@@ -877,7 +868,7 @@ class PSCTONTradingBot:
                         f"{confidence:.3f}",
                         direction,
                         f"{exit_estimate:.8f}",
-                        f"{ml_prediction:.3f}",
+                        f"{ml_prediction_value:.3f}",
                         self.get_signal_strength(confidence),
                         self.get_market_conditions()
                     ])
@@ -1879,10 +1870,11 @@ Time: {current_time.strftime('%H:%M:%S')}
 /performance - Performance metrics and success rates
 
 🧠 **AI & ML Features:**
-/ml - ML continuous monitoring with 4-signal cycles
+/ml - ML continuous monitoring with database learning
 /tradingview - TradingView integration status
-/microstructure - Live microstructure trainer status
-/predictions - Enhanced ML prediction analysis
+/predictions - Enhanced ML prediction validation analysis
+/paper - Paper trading validation and accuracy metrics
+/database - Database status and signal analytics
 
 🔧 **System & Configuration:**
 /config - Current system configuration
@@ -1897,16 +1889,16 @@ Time: {current_time.strftime('%H:%M:%S')}
 • Superp technology with NO liquidation risk
 
 🎯 **Current System Status:**
-• Database Integration: ✅ Fully Operational
-• ML Engine: ✅ Generating 4 signals per cycle
-• Signal Storage: ✅ UUID-tracked in database
-• All Integrations: ✅ Active and monitoring
+• Database Integration: ✅ Fully Operational (Database-only)
+• ML Engine: ✅ Continuous learning from historical data
+• Signal Storage: ✅ UUID-tracked with validation
+• Learning Pipeline: ✅ Prediction → Validation → Learning
 
 💡 **Quick Tips:**
-• ML signals run independently every 45 seconds
-• All signals stored in database with timestamps
-• Use /notifications to toggle alerts
-• Use /ml to see current prediction details
+• Use /paper to check validation accuracy
+• Use /predictions for detailed ML performance  
+• Use /database for signal analytics
+• All data persists across restarts in database
         """
         await update.message.reply_text(help_msg, parse_mode='Markdown')
     
@@ -2804,8 +2796,9 @@ Currently no active Superp positions.
 • Confidence threshold optimization
 
 📋 **Related Commands:**
-/paper - Paper trading validation
-/ml - ML system status
+/paper - Paper trading validation and accuracy
+/database - Database analytics and signal counts  
+/ml - ML system status and learning
 /performance - Overall system performance
 
 🧠 *Advanced ML prediction validation for continuous improvement*
@@ -2816,6 +2809,92 @@ Currently no active Superp positions.
         except Exception as e:
             logger.error(f"Predictions command error: {e}")
             await update.message.reply_text("❌ Error generating prediction report", parse_mode='Markdown')
+
+    async def paper_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /paper command - Show paper trading validation and accuracy metrics"""
+        try:
+            # Get database trading statistics
+            trade_stats = self.data_manager.get_trade_statistics()
+            session_stats = self.data_manager.get_session_stats()
+            
+            # Get recent paper trades from database
+            recent_trades = self.data_manager.get_recent_trades(limit=10)
+            
+            # Calculate paper trading metrics
+            total_paper_trades = len([t for t in recent_trades if t.get('trade_type') == 'PAPER'])
+            profitable_trades = len([t for t in recent_trades if t.get('trade_type') == 'PAPER' and t.get('profit_pct', 0) > 0])
+            
+            accuracy_rate = (profitable_trades / total_paper_trades * 100) if total_paper_trades > 0 else 0
+            
+            # Get ML prediction accuracy if available
+            ml_accuracy = 0
+            if hasattr(self, 'prediction_validator') and self.prediction_validator:
+                try:
+                    report = self.prediction_validator.get_performance_report()
+                    ml_accuracy = report.get('summary', {}).get('accuracy_rate', 0) * 100
+                except:
+                    ml_accuracy = 0
+            
+            paper_msg = f"""📊 **Paper Trading & Validation Report**
+═══════════════════════════════════
+
+🎯 **Paper Trading Performance:**
+• Total Paper Trades: {total_paper_trades}
+• Profitable Trades: {profitable_trades}
+• Success Rate: {accuracy_rate:.1f}%
+• Session Trades: {session_stats.get('trades_executed', 0)}
+
+🧠 **ML Prediction Accuracy:**
+• Validation Accuracy: {ml_accuracy:.1f}%
+• Database Predictions: {len(getattr(self.ml_engine, 'predictions', []))}
+• Learning Status: ✅ Active (Database-driven)
+
+📈 **Recent Paper Trades:**
+"""
+            
+            # Show recent paper trades
+            paper_trades = [t for t in recent_trades if t.get('trade_type') == 'PAPER'][:5]
+            
+            if paper_trades:
+                for i, trade in enumerate(paper_trades, 1):
+                    coin = trade.get('coin', 'Unknown')
+                    profit_pct = trade.get('profit_pct', 0)
+                    confidence = trade.get('confidence', 0)
+                    status = "✅ Profit" if profit_pct > 0 else "❌ Loss"
+                    
+                    paper_msg += f"{i}. {coin} {status} ({profit_pct:+.2f}%) - Conf: {confidence:.1f}\n"
+            else:
+                paper_msg += "• No recent paper trades found\n"
+            
+            paper_msg += f"""
+
+🔬 **Validation Features:**
+• ✅ Real-time paper trade tracking
+• ✅ Database-stored trade outcomes  
+• ✅ ML prediction accuracy monitoring
+• ✅ 10-minute outcome validation
+• ✅ Continuous learning from results
+
+💾 **Database Integration:**
+• All trades stored with UUID tracking
+• Historical validation data preserved
+• Real-time accuracy calculations
+• Performance trend analysis
+
+📋 **Related Commands:**
+/predictions - Detailed ML prediction analysis
+/database - Database status and statistics
+/performance - Overall system performance
+/ml - ML engine status and learning
+
+🎯 *Paper trading provides risk-free validation of system accuracy*
+            """
+            
+            await update.message.reply_text(paper_msg, parse_mode='Markdown')
+            
+        except Exception as e:
+            logger.error(f"Paper trading command error: {e}")
+            await update.message.reply_text("❌ Error generating paper trading report", parse_mode='Markdown')
 
     async def send_notification(self, message: str, force=False):
         """Send notification to user (respects notification settings)"""
@@ -3826,6 +3905,7 @@ Currently no active Superp positions.
             CommandHandler("ml", self.ml_command),
             CommandHandler("database", self.database_command),
             CommandHandler("predictions", self.predictions_command),
+            CommandHandler("paper", self.paper_command),
         ]
         
         for handler in handlers:

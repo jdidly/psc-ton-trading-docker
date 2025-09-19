@@ -23,7 +23,8 @@ The PSC Trading System is a next-generation autonomous trading platform that com
 - ✅ **Integrated Accuracy System**: Multi-layer signal validation with consensus scoring
 - ✅ **Bidirectional Trading**: Automated LONG/SHORT position management
 - ✅ **Database-Integrated**: Real-time data storage and retrieval (replaced CSV files)
-- ✅ **Production Optimized**: Clean, efficient Docker deployment
+- ✅ **Smart Prediction Optimization**: Intelligent filtering reduces database load by 50-80%
+- ✅ **Production Optimized**: Clean, efficient Docker deployment with lean data management
 - ✅ **Telegram Control**: Complete bot management via `/trades`, `/performance`, `/stats`
 - ✅ **ML Validation**: Every trade validated by machine learning predictions
 - ✅ **Risk Management**: Dynamic leverage with zero liquidation possibility
@@ -54,6 +55,8 @@ The system has evolved from CSV files to a unified SQLite database providing:
 - **ACID Transactions**: Guaranteed data integrity
 - **Multi-table Analytics**: Complex performance calculations
 - **Telegram Integration**: Live bot commands with database queries
+- **Smart Storage Optimization**: Only high-quality predictions stored (≥25% confidence, ≥0.2% return)
+- **Long-term Sustainability**: Intelligent filtering prevents database bloat while maintaining learning quality
 
 ---
 

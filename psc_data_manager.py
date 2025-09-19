@@ -40,6 +40,21 @@ class PSCDataManager:
         
         logger.info("✅ PSC Data Manager initialized with database")
     
+    def _serialize_ml_features(self, ml_features):
+        """Helper to serialize ML features with datetime handling"""
+        if ml_features is None:
+            return None
+        
+        # Convert datetime objects to ISO format strings
+        serializable_features = {}
+        for key, value in ml_features.items():
+            if isinstance(value, datetime):
+                serializable_features[key] = value.isoformat()
+            else:
+                serializable_features[key] = value
+        
+        return serializable_features
+    
     def log_psc_signal(self, coin: str, price: float, ratio: float, 
                        confidence: float, direction: str, exit_estimate: float,
                        ml_prediction: float, market_conditions: str = None,
@@ -71,7 +86,7 @@ class PSCDataManager:
                 ml_prediction=ml_prediction,
                 signal_strength=signal_strength,
                 market_conditions=market_conditions,
-                ml_features=ml_features
+                ml_features=self._serialize_ml_features(ml_features)
             )
             
             # Update session stats
@@ -333,6 +348,46 @@ class PSCDataManager:
             severity='INFO'
         )
         logger.info("🔄 PSC Data Manager shutdown complete")
+    
+    def execute_query(self, query: str, params: tuple = None):
+        """Execute a database query - for ML engine compatibility"""
+        try:
+            return self.db.execute_query(query, params)
+        except Exception as e:
+            logger.error(f"Database query error: {e}")
+            return []
+    
+    def get_ml_signals(self, limit: int = 100):
+        """Get ML signals for learning - for ML engine compatibility"""
+        try:
+            query = """
+            SELECT coin, price, confidence, direction, ml_prediction, 
+                   ml_features, timestamp, signal_id
+            FROM signals 
+            WHERE ml_features IS NOT NULL 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+            """
+            return self.execute_query(query, (limit,))
+        except Exception as e:
+            logger.error(f"Error getting ML signals: {e}")
+            return []
+    
+    def get_ml_predictions(self, limit: int = 100):
+        """Get ML predictions for validation - for ML engine compatibility"""
+        try:
+            query = """
+            SELECT signal_id, coin, confidence, predicted_outcome, 
+                   predicted_confidence, actual_outcome, actual_profit_pct, 
+                   timestamp
+            FROM prediction_validations 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+            """
+            return self.execute_query(query, (limit,))
+        except Exception as e:
+            logger.error(f"Error getting ML predictions: {e}")
+            return []
 
 # Integration helper functions for easy migration from CSV
 class PSCLegacyCompatibility:

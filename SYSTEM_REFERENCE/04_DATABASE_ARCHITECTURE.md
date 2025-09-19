@@ -1,4 +1,31 @@
-# 🗄️ PSC Trading System - Database Architecture Guide
+# 🗄️ PSC Tr### **Database Evolution**
+```
+Legacy System (CSV-based)        Modern System (Database-powered)
+├── live_trades.csv              ├── 🗄️ Unified SQLite Database
+├── psc_signals.csv       →      │   ├── trades table
+├── ml_predictions.csv           │   ├── signals table (optimized storage)
+├── daily_summaries.csv          │   ├── validation table
+└── Multiple file operations     │   ├── performance table
+                                 │   └── system_events table
+                                 ├── ⚡ Real-time queries
+                                 └── 🔧 Smart storage optimization
+```
+
+### **🔧 STORAGE OPTIMIZATION** 🆕
+
+**Intelligent Data Management**: The database implements smart filtering to prevent bloat while maintaining learning quality.
+
+**Optimization Features**:
+- **Quality-Based Storage**: Only high-value predictions stored in database
+- **Memory-Based Learning**: All predictions used for ML training regardless of storage
+- **Deduplication**: Prevents redundant similar predictions
+- **Long-term Sustainability**: Database growth controlled for production environments
+
+**Storage Criteria** (Applied to ML predictions):
+- Confidence ≥ 25% (actionable predictions only)
+- Expected return ≥ 0.2% (profitable opportunities only)  
+- Non-HOLD signals (tradeable directions only)
+- Unique within 5-minute windows (no duplicates)m - Database Architecture Guide
 
 **Purpose**: Complete documentation of the unified database system that powers the PSC Trading System
 
