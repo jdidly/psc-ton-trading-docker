@@ -53,9 +53,10 @@ logger = logging.getLogger(__name__)
 class MLEngine:
     """Advanced ML Engine for PSC Trading System with real models"""
     
-    def __init__(self):
+    def __init__(self, data_manager=None):
         self.predictions = []
         self.performance_history = []
+        self.data_manager = data_manager  # For database storage
         
         # Get project root directory (go up from src/ to project root)
         self.project_root = Path(__file__).parent.parent
@@ -67,6 +68,7 @@ class MLEngine:
         logger.info(f"   Project root: {self.project_root}")
         logger.info(f"   Data directory: {self.data_dir}")
         logger.info(f"   Data dir exists: {self.data_dir.exists()}")
+        logger.info(f"   Database integration: {'✅ ENABLED' if data_manager else '❌ DISABLED (CSV fallback)'}")
         
         # Initialize enhanced models if sklearn is available
         if SKLEARN_AVAILABLE and NUMPY_AVAILABLE:
@@ -396,10 +398,10 @@ class MLEngine:
                 potential_profit = base_amount * max(expected_return, 0)
                 potential_loss = base_amount * abs(min(expected_return, 0))
             
-            # Enhanced recommendation logic (lowered thresholds for data gathering)
-            if win_prob > 0.55 and expected_return > 0.01 and confidence > 0.5:
+            # Strengthened recommendation logic - higher thresholds for quality signals
+            if win_prob > 0.65 and expected_return > 0.015 and confidence > 0.7:
                 recommendation = 'BUY'
-            elif win_prob < 0.45 or expected_return < -0.01:
+            elif win_prob < 0.35 and expected_return < -0.015 and confidence > 0.7:
                 recommendation = 'SELL'
             else:
                 recommendation = 'HOLD'
@@ -621,12 +623,12 @@ class MLEngine:
         }
     
     def _categorize_confidence(self, confidence):
-        """Categorize confidence into levels (lowered for data gathering)"""
-        if confidence >= 0.65:  # Lowered from 0.75
+        """Categorize confidence into levels - raised thresholds to reduce weak signals"""
+        if confidence >= 0.75:  # Raised back to original - very high confidence required
             return 'very_high'
-        elif confidence >= 0.45:  # Lowered from 0.55
+        elif confidence >= 0.65:  # Raised from 0.45 to 0.65 - strong signals only
             return 'high'
-        elif confidence >= 0.25:  # Lowered from 0.35
+        elif confidence >= 0.50:  # Raised from 0.25 to 0.50 - minimum viable confidence
             return 'medium'
         else:
             return 'low'
@@ -666,11 +668,16 @@ class MLEngine:
     def _update_performance_tracking(self, prediction, actual):
         """Update performance metrics"""
         try:
-            accuracy = 1.0 if prediction['recommendation'] == actual.get('action', 'HOLD') else 0.0
+            # Get recommendation from prediction - handle multiple possible keys
+            recommendation = prediction.get('recommendation', 
+                           prediction.get('direction', 
+                           prediction.get('prediction', 'UNKNOWN')))
+            
+            accuracy = 1.0 if recommendation == actual.get('action', 'HOLD') else 0.0
             
             performance_record = {
                 'timestamp': datetime.now().isoformat(),
-                'predicted_confidence': prediction['confidence'],
+                'predicted_confidence': prediction.get('confidence', 0.0),
                 'actual_accuracy': accuracy,
                 'model_used': prediction.get('model_used', 'unknown')
             }
@@ -1005,7 +1012,7 @@ class MLEngine:
             logger.error(f"Error saving models: {e}")
     
     def load_models(self):
-        """Load trained models"""
+        """Load trained models with numpy compatibility fix"""
         try:
             if not SKLEARN_AVAILABLE:
                 return
@@ -1026,6 +1033,11 @@ class MLEngine:
             if not all((models_dir / f).exists() for f in model_files):
                 return
             
+            # Set numpy random state for compatibility with older pickle files
+            import numpy as np
+            if hasattr(np.random, 'MT19937'):
+                np.random.set_state = lambda state: None  # Ignore old random states
+            
             with open(models_dir / "win_predictor.pkl", 'rb') as f:
                 self.win_predictor = pickle.load(f)
             
@@ -1042,7 +1054,20 @@ class MLEngine:
             logger.info("📚 Pre-trained models loaded successfully")
             
         except Exception as e:
-            logger.error(f"Error loading models: {e}")
+            # If models can't be loaded due to version incompatibility, delete them
+            if "BitGenerator" in str(e) or "MT19937" in str(e):
+                logger.warning(f"🔄 Model compatibility issue detected: {e}")
+                logger.info("🧹 Clearing incompatible model files - new models will be trained")
+                try:
+                    models_dir = self.data_dir / "models"
+                    if models_dir.exists():
+                        import shutil
+                        shutil.rmtree(models_dir)
+                        logger.info("✅ Incompatible models cleared successfully")
+                except Exception as cleanup_e:
+                    logger.warning(f"⚠️ Could not clear model files: {cleanup_e}")
+            else:
+                logger.error(f"Error loading models: {e}")
             self.models_trained = False
     
     def save_prediction_history(self):
@@ -1060,15 +1085,98 @@ class MLEngine:
             logger.error(f"Error saving prediction history: {e}")
     
     def load_prediction_history(self):
-        """Load prediction history from both JSON and CSV sources"""
+        """Load prediction history from database (preferred) or fallback to files"""
         try:
             # Initialize empty collections
             self.predictions = []
             self.performance_history = []
             
+            # Try to load from database first (preferred method)
+            if self.data_manager:
+                database_loaded = self._load_from_database()
+                if database_loaded > 0:
+                    logger.info(f"🎯 Total prediction history loaded from database: {database_loaded} entries")
+                    
+                    # If we have enough data, consider triggering a retrain
+                    if database_loaded >= 30:
+                        logger.info(f"🧠 Sufficient prediction history ({database_loaded}) - models ready for enhanced training")
+                    return
+                else:
+                    logger.warning("📂 No historical data found in database, falling back to file loading...")
+            
+            # Fallback to file loading if database unavailable or empty
+            self._load_from_files()
+            
+        except Exception as e:
+            logger.error(f"Error loading prediction history: {e}")
+            self.predictions = []
+            self.performance_history = []
+    
+    def _load_from_database(self):
+        """Load prediction history from database"""
+        try:
+            # Get historical ML signals from database - load ALL signals for training
+            signals = self.data_manager.db.execute_query(
+                "SELECT * FROM signals WHERE signal_type IN ('ML_SIGNAL', 'ML_HISTORICAL') ORDER BY created_at DESC LIMIT 5000"
+            )
+            
+            database_loaded = 0
+            
+            for signal in signals:
+                try:
+                    # Convert database signal to prediction format
+                    prediction = {
+                        'timestamp': signal['created_at'],
+                        'symbol': signal['coin'],
+                        'predicted_direction': signal['direction'],
+                        'confidence': signal['confidence'],
+                        'win_probability': signal['ml_prediction'],
+                        'expected_return': 0.0,  # Can be extracted from ml_features if needed
+                        'model_used': 'database_historical',
+                        'features_used': 25,
+                        'price': signal['price'],
+                        'ton_price': 0.0,  # Can be extracted from ml_features if needed
+                        'ratio': signal.get('ratio', 0.0),
+                        'source': 'database_migration',
+                        'signal_id': signal['id']
+                    }
+                    
+                    # Extract additional data from ml_features JSON if available
+                    if signal.get('ml_features'):
+                        try:
+                            import json
+                            features = json.loads(signal['ml_features']) if isinstance(signal['ml_features'], str) else signal['ml_features']
+                            prediction.update({
+                                'expected_return': features.get('expected_return', 0.0),
+                                'ton_price': features.get('ton_price', 0.0),
+                                'ratio': features.get('ratio', signal.get('ratio', 0.0)),
+                                'model_used': features.get('model_used', 'database_historical')
+                            })
+                        except:
+                            pass  # Continue with basic data if JSON parsing fails
+                    
+                    self.predictions.append(prediction)
+                    database_loaded += 1
+                    
+                except Exception as pred_error:
+                    logger.warning(f"Error processing database signal: {pred_error}")
+                    continue
+            
+            logger.info(f"📊 Loaded {database_loaded} predictions from database")
+            return database_loaded
+            
+        except Exception as e:
+            logger.error(f"Error loading from database: {e}")
+            return 0
+    
+    def _load_from_files(self):
+        """Fallback: Load prediction history from JSON and CSV files"""
+        try:
+            json_loaded = 0
+            csv_loaded = 0
+            
             # Load from JSON history file (original method)
             history_file = self.data_dir / "prediction_history.json"
-            json_loaded = 0
             
             if history_file.exists():
                 with open(history_file, 'r') as f:
@@ -1081,7 +1189,6 @@ class MLEngine:
             
             # Load from ML signals CSV file (enhanced feature)
             csv_file = self.project_root / "data" / "ml_signals.csv"
-            csv_loaded = 0
             
             if csv_file.exists():
                 try:
@@ -1118,14 +1225,14 @@ class MLEngine:
                     logger.warning(f"Could not load from ML signals CSV: {csv_error}")
             
             total_loaded = json_loaded + csv_loaded
-            logger.info(f"🎯 Total prediction history loaded: {total_loaded} entries ({json_loaded} JSON + {csv_loaded} CSV)")
+            logger.info(f"🎯 Total prediction history loaded from files: {total_loaded} entries ({json_loaded} JSON + {csv_loaded} CSV)")
             
             # If we have enough data, consider triggering a retrain
             if total_loaded >= 30:
                 logger.info(f"🧠 Sufficient prediction history ({total_loaded}) - models ready for enhanced training")
-            
+                
         except Exception as e:
-            logger.error(f"Error loading prediction history: {e}")
+            logger.error(f"Error loading from files: {e}")
             self.predictions = []
             self.performance_history = []
     
@@ -1266,21 +1373,21 @@ class MLEngine:
             # Determine signal direction based on expected return
             signal_direction = "LONG" if expected_return > 0 else "SHORT" if expected_return < 0 else "NEUTRAL"
             
-            # RELAXED criteria for testing (lowered thresholds)
+            # STRENGTHENED criteria for quality signals (raised thresholds back to production standards)
             if signal_direction == "LONG":
                 criteria = {
-                    'high_small_move_confidence': small_move_prob >= 0.5,    # Lowered from 0.6 for data gathering
-                    'profitable_expectation': expected_return >= 0.001,      # Lowered from 0.0015
-                    'strong_overall_confidence': confidence >= 0.5,         # Lowered from 0.6 for data gathering
-                    'ratio_threshold': ratio >= 1.1,                       # Lowered from 1.2
+                    'high_small_move_confidence': small_move_prob >= 0.65,   # Raised back for quality signals
+                    'profitable_expectation': expected_return >= 0.0015,    # Raised back to original threshold
+                    'strong_overall_confidence': confidence >= 0.65,        # Raised to match new confidence standards
+                    'ratio_threshold': ratio >= 1.25,                      # Raised back to original standard
                     'timer_advantage': self._is_timer_favorable()           # Good timer position
                 }
             elif signal_direction == "SHORT":
                 criteria = {
-                    'high_small_move_confidence': small_move_prob >= 0.5,    # Lowered from 0.6 for data gathering
-                    'profitable_expectation': expected_return <= -0.001,     # Relaxed from -0.0015
-                    'strong_overall_confidence': confidence >= 0.5,         # Lowered from 0.6 for data gathering
-                    'ratio_threshold': ratio <= 1.0,                       # Raised from 0.9
+                    'high_small_move_confidence': small_move_prob >= 0.65,   # Raised back for quality signals
+                    'profitable_expectation': expected_return <= -0.0015,   # Raised back to original threshold
+                    'strong_overall_confidence': confidence >= 0.65,        # Raised to match new confidence standards
+                    'ratio_threshold': ratio <= 0.9,                       # Lowered back to original standard
                     'timer_advantage': self._is_timer_favorable()           # Good timer position
                 }
             else:
@@ -1288,9 +1395,9 @@ class MLEngine:
                 logger.info(f"   Signal direction: NEUTRAL - no signal generated")
                 return False, prediction
             
-            # Must meet most criteria for independent signal (lowered threshold for data gathering)
+            # Must meet most criteria for independent signal (raised threshold for quality signals)
             criteria_met = sum(criteria.values())
-            threshold = 2  # Lowered from 3 to 2 out of 5 criteria for more data
+            threshold = 4  # Raised from 2 to 4 out of 5 criteria for high-quality signals only
             
             logger.info(f"   Signal direction: {signal_direction}, Criteria met: {criteria_met}/5")
             logger.info(f"   Criteria details: {criteria}")
@@ -1405,7 +1512,75 @@ class MLEngine:
             logger.error(f"Error in continuous market scan: {e}")
 
     def _store_ml_signal(self, signal_data):
-        """Store ML-generated signal to CSV file for main system to validate and potentially act on"""
+        """Store ML-generated signal to database for Railway deployment compatibility"""
+        try:
+            # For Railway deployment, we use database instead of CSV files
+            if hasattr(self, 'data_manager') and self.data_manager:
+                # Use database storage
+                return self._store_ml_signal_to_database(signal_data)
+            else:
+                # Fallback to CSV for local development
+                return self._store_ml_signal_to_csv_fallback(signal_data)
+                
+        except Exception as e:
+            logger.error(f"Error storing ML signal: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+
+    def _store_ml_signal_to_database(self, signal_data):
+        """Store ML signal directly to database (Railway-ready)"""
+        try:
+            # Validate and clean the signal data
+            cleaned_signal = self._clean_signal_data(signal_data)
+            prediction = cleaned_signal.get('prediction', {})
+            
+            # Prepare signal data for database
+            signal_id = self.data_manager.log_ml_signal(
+                coin=cleaned_signal.get('coin', ''),
+                price=float(cleaned_signal.get('price', 0.0)),
+                confidence=float(prediction.get('confidence', 0.0)),
+                direction=prediction.get('recommendation', 'HOLD'),
+                ml_prediction=float(prediction.get('win_probability', 0.0)),
+                ml_features={
+                    'signal_type': 'ML_INDEPENDENT',
+                    'expected_return': prediction.get('expected_return', 0.0),
+                    'small_move_probability': prediction.get('small_move_probability', 0.0),
+                    'potential_profit': prediction.get('potential_profit', 0.0),
+                    'potential_loss': prediction.get('potential_loss', 0.0),
+                    'model_used': prediction.get('model_used', 'unknown'),
+                    'features_used': prediction.get('features_used', 0),
+                    'ratio_strength': prediction.get('ratio_strength', 0.0),
+                    'timer_position': prediction.get('timer_position', 0.0),
+                    'market_session': prediction.get('market_session', 'OTHER'),
+                    'source': cleaned_signal.get('source', 'ML'),
+                    'scan_type': cleaned_signal.get('scan_type', 'continuous'),
+                    'ratio': cleaned_signal.get('ratio', 0.0),
+                    'ton_price': cleaned_signal.get('ton_price', 0.0)
+                }
+            )
+            
+            # Also maintain a recent signals queue in memory
+            if not hasattr(self, 'recent_ml_signals'):
+                self.recent_ml_signals = []
+            
+            self.recent_ml_signals.append(cleaned_signal)
+            
+            # Keep only last 50 signals in memory
+            if len(self.recent_ml_signals) > 50:
+                self.recent_ml_signals = self.recent_ml_signals[-50:]
+                
+            logger.info(f"📊 ML signal stored to database: {cleaned_signal.get('coin')} - Win: {prediction.get('win_probability', 0):.3f}, Conf: {prediction.get('confidence', 0):.3f}, ID: {signal_id}")
+            return signal_id
+            
+        except Exception as e:
+            logger.error(f"Error storing ML signal to database: {e}")
+            # Fallback to CSV if database fails
+            return self._store_ml_signal_to_csv_fallback(signal_data)
+
+    def _store_ml_signal_to_csv_fallback(self, signal_data):
+        """Fallback CSV storage for local development"""
+    def _store_ml_signal_to_csv_fallback(self, signal_data):
+        """Fallback CSV storage for local development"""
         try:
             # Create data directory
             data_dir = self.project_root / "data"
@@ -1443,89 +1618,20 @@ class MLEngine:
                 'scan_type': cleaned_signal.get('scan_type', 'continuous')
             }
             
-            # Define CSV headers
-            csv_headers = [
-                'timestamp', 'coin', 'price', 'ton_price', 'ratio',
-                'win_probability', 'confidence', 'expected_return', 'small_move_probability',
-                'potential_profit', 'potential_loss', 'recommendation', 'model_used',
-                'features_used', 'ratio_strength', 'timer_position', 'market_session',
-                'source', 'scan_type'
-            ]
-            
-            # Check if file exists to determine if we need headers
+            # Write to CSV (simplified for fallback)
             file_exists = csv_file.exists()
-            
-            # Use atomic write to prevent file corruption with unique temp file
-            import time
-            import random
-            temp_suffix = f".tmp_{int(time.time())}_{random.randint(1000,9999)}"
-            temp_file = csv_file.with_suffix(temp_suffix)
-            
-            # If original file exists, copy it to temp first
-            if file_exists:
-                import shutil
-                try:
-                    shutil.copy2(csv_file, temp_file)
-                    write_mode = 'a'  # Append mode
-                    write_headers = False
-                except Exception as e:
-                    logger.warning(f"Could not copy existing CSV file: {e}, creating new file")
-                    write_mode = 'w'
-                    write_headers = True
-            else:
-                write_mode = 'w'  # Write mode for new file
-                write_headers = True
-            
-            # Write to temporary file
-            with open(temp_file, write_mode, newline='', encoding='utf-8') as f:
+            with open(csv_file, 'a', newline='', encoding='utf-8') as f:
+                csv_headers = list(csv_row.keys())
                 writer = csv.DictWriter(f, fieldnames=csv_headers)
                 
-                # Write headers if new file
-                if write_headers:
+                if not file_exists:
                     writer.writeheader()
-                
-                # Write the signal data
                 writer.writerow(csv_row)
-                f.flush()  # Ensure data is written
-                os.fsync(f.fileno())  # Force write to disk
-            
-            # Atomic rename (Windows-compatible)
-            try:
-                if csv_file.exists():
-                    csv_file.unlink()  # Remove existing file first on Windows
-                temp_file.rename(csv_file)
-            except Exception as e:
-                logger.error(f"Error during atomic rename: {e}")
-                # Cleanup temp file if rename failed
-                if temp_file.exists():
-                    temp_file.unlink()
-                raise
-            
-            # Also maintain a recent signals queue in memory
-            if not hasattr(self, 'recent_ml_signals'):
-                self.recent_ml_signals = []
-            
-            self.recent_ml_signals.append(cleaned_signal)
-            
-            # Keep only last 50 signals in memory
-            if len(self.recent_ml_signals) > 50:
-                self.recent_ml_signals = self.recent_ml_signals[-50:]
                 
-            logger.info(f"� ML signal stored to CSV: {csv_row['coin']} - Win: {csv_row['win_probability']:.3f}, Conf: {csv_row['confidence']:.3f}")
+            logger.info(f"📝 ML signal stored to CSV (fallback): {csv_row['coin']} - Win: {csv_row['win_probability']:.3f}, Conf: {csv_row['confidence']:.3f}")
             
         except Exception as e:
-            logger.error(f"Error storing ML signal to CSV: {e}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-            
-            # Cleanup any temp files that might be left behind
-            self._cleanup_temp_csv_files()
-            
-            # Fallback: try to store as JSON if CSV fails
-            try:
-                self._store_ml_signal_json_fallback(signal_data)
-            except Exception as fallback_error:
-                logger.error(f"JSON fallback also failed: {fallback_error}")
+            logger.error(f"Error in CSV fallback storage: {e}")
 
     def _cleanup_temp_csv_files(self):
         """Clean up any leftover temporary CSV files"""
@@ -1837,16 +1943,22 @@ class MLEngine:
                 validation_score += 1
                 logger.info(f"✅ Timeframe alignment confirmed")
             
-            # 4. Entry recommendation is favorable (ENHANCED: supports both directions)
+            # 4. Entry recommendation is favorable (ENHANCED: supports both directions, filters weak HOLD signals)
             if ml_direction == "LONG" and entry_recommendation in ['buy', 'strong_buy']:
                 validation_score += 1
                 logger.info(f"✅ Entry recommendation: {entry_recommendation}")
             elif ml_direction == "SHORT" and entry_recommendation in ['sell', 'strong_sell']:
                 validation_score += 1
                 logger.info(f"✅ Entry recommendation: {entry_recommendation}")
-            elif entry_recommendation == 'hold' and abs(ml_expected_return) > 0.0015:
-                validation_score += 0.5  # Partial credit for strong ML with neutral recommendation
-                logger.info(f"⚠️ Partial entry recommendation: {entry_recommendation} with strong ML")
+            elif entry_recommendation == 'hold':
+                # Only use HOLD signals for training if they have exceptional quality
+                if (abs(ml_expected_return) > 0.002 and  # Strong expected return (>0.2%)
+                    ml_prediction.get('confidence', 0) > 0.75 and  # Very high ML confidence
+                    tv_strength > 0.7):  # Strong TradingView consensus despite hold
+                    validation_score += 0.3  # Reduced credit for quality HOLD signals
+                    logger.info(f"✅ Quality HOLD for training: Strong ML + TV consensus")
+                else:
+                    logger.info(f"❌ Weak HOLD signal filtered out for training")
             
             # 5. TradingView confidence is reasonable
             if tv_confidence >= 0.5:
@@ -1987,5 +2099,5 @@ class MLEngine:
             return None
 
 
-# Create global ML engine instance
-ml_engine = MLEngine()
+# Global ML engine instance removed - use proper initialization in main system
+# ml_engine = MLEngine()  # Disabled to prevent duplicate instances

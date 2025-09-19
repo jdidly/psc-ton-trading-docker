@@ -36,6 +36,8 @@ services:
     volumes:
       - trading_data:/app/data
       - trading_logs:/app/logs
+      # SQLite database persistence (accessible from host)
+      - ./database:/app/database
     
     depends_on:
       postgres:

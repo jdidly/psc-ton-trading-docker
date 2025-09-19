@@ -1,4 +1,4 @@
-# Docker ignore file
+# Docker ignore file - Production Ready
 __pycache__/
 *.pyc
 *.pyo
@@ -19,6 +19,15 @@ coverage.xml
 .pytest_cache
 .hypothesis
 
+# Development and test files
+test_*.py
+test_*.db
+*_test.py
+testing/
+tests/
+test/
+*.test
+
 # Project specific
 Tools/
 Tests/
@@ -31,8 +40,31 @@ docs_clean/
 *.tmp
 *.bak
 
+# Export and temporary files
+export_*.csv
+export_*.json
+temp_*.py
+temp_*.db
+
+# Documentation (keep only essential docs)
+TELEGRAM_BOT_DATABASE_INTEGRATION_COMPLETE.md
+DATABASE_INTEGRATION_COMPLETE.md
+DATABASE_INTEGRATION_STATUS.md
+VALIDATION_SYSTEM_COMPLETE.md
+
 # Data files (will be created in volumes)
 data/*.csv
 data/*.json
+data/*.db
 logs/*.log
 logs/*.csv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

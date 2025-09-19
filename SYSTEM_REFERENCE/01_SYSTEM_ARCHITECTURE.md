@@ -32,17 +32,26 @@ PSC Trading System Architecture
 │   ├── Position Limits
 │   └── Time-Based Exits
 │
-├── 📱 USER INTERFACES
-│   ├── Telegram Bot (Remote Control)
-│   ├── Simple Dashboard (Parameters)
-│   ├── Web Dashboard (Analytics)
-│   └── Universal Launcher
+├── �️ DATABASE LAYER
+│   ├── psc_database.py (SQLite Operations)
+│   ├── psc_data_manager.py (Unified Interface)
+│   ├── Real-time Data Storage
+│   ├── ACID Transactions
+│   └── Multi-table Analytics
+│
+├── �📱 USER INTERFACES
+│   ├── Telegram Bot (Database-Integrated)
+│   ├── Simple Dashboard (Real-time Data)
+│   ├── Web Dashboard (Live Analytics)
+│   └── Database Viewer Tools
 │
 └── 📈 DATA & MONITORING
-    ├── Real-Time Price Feeds
-    ├── Trade Execution Logs
-    ├── ML Prediction History
-    └── Performance Analytics
+    ├── SQLite Database (Primary Storage)
+    ├── Real-Time Queries
+    ├── Performance Analytics
+    ├── Trade History
+    ├── ML Validation Tracking
+    └── CSV Export (Backup/Analysis)
 ```
 
 ---

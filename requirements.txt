@@ -1,5 +1,5 @@
-# PSC Trading System - Cloud Deployment Dependencies
-# Streamlined for Render deployment compatibility
+# PSC Trading System - Railway Deployment Dependencies
+# Optimized for Railway cloud platform with Unicode support
 
 # ===== CORE TRADING DEPENDENCIES =====
 pandas>=1.5.0
@@ -25,12 +25,17 @@ lxml>=4.9.0
 # ===== CONFIGURATION & UTILITIES =====
 PyYAML>=6.0.0
 click>=8.0.0
+tabulate>=0.9.0
 
 # ===== HTTP AND WEB =====
 urllib3>=1.26.0
+httpx>=0.25.0
 
 # ===== JWT SUPPORT =====
 PyJWT>=2.8.0
+
+# ===== ASYNC SUPPORT =====
+asyncio>=3.4.3
 
 # ===== DEVELOPMENT/OPTIONAL =====
 # Commented out to avoid compatibility issues on cloud platforms

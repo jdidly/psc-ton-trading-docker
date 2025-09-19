@@ -10,13 +10,19 @@ import logging
 import asyncio
 from pathlib import Path
 
-# Setup logging
+# Set UTF-8 encoding for Windows compatibility
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# Create logs directory if it doesn't exist
+Path('logs').mkdir(exist_ok=True)
+
+# Setup logging with UTF-8 encoding
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('logs/startup.log')
+        logging.FileHandler('logs/startup.log', encoding='utf-8')
     ]
 )
 

@@ -2,7 +2,7 @@
 
 **Purpose**: Central reference for understanding the complete PSC Trading System architecture, trading logic, and operational guidelines.
 
-**Last Updated**: August 25, 2025
+**Last Updated**: September 10, 2025
 
 ---
 
@@ -12,9 +12,9 @@
 - `01_SYSTEM_ARCHITECTURE.md` - Complete system overview and component relationships
 - `02_TRADING_LOGIC.md` - Core trading algorithms and decision processes  
 - `03_ML_ENGINE_GUIDE.md` - Machine learning integration and prediction system
-- `04_SUPERP_TECHNOLOGY.md` - No-liquidation perpetual trading technology
-- `05_CONFIGURATION_GUIDE.md` - System settings and parameter tuning
-- `06_TESTING_VALIDATION.md` - Testing frameworks and validation procedures
+- `04_DATABASE_ARCHITECTURE.md` - Unified database system and data management
+- `05_INTEGRATED_ACCURACY_SYSTEM.md` - Multi-layer signal validation and consensus scoring
+- `07_ML_MICROSTRUCTURE_SYSTEM.md` - Advanced microstructure analysis system
 
 ### **⚡ Quick Commands**
 - `python psc_ton_system.py` - Start main trading system

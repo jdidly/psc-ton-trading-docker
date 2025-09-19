@@ -82,9 +82,25 @@ class LeverageRanges:
     EXTREME = (5000, 10000)       # 5000x-10000x for maximum confidence
 
 class LiveMicrostructureTrainer:
-    def __init__(self):
+    def __init__(self, data_manager=None):
         """Initialize live microstructure trainer with PSC system integration"""
+        # Debug logging for data_manager
+        logger = logging.getLogger(__name__)
+        logger.debug(f"LiveMicrostructureTrainer.__init__ called with data_manager: {data_manager}")
+        logger.debug(f"data_manager type: {type(data_manager)}")
+        if data_manager is not None:
+            logger.debug(f"data_manager has connection: {hasattr(data_manager, 'connection')}")
+            if hasattr(data_manager, 'connection'):
+                logger.debug(f"data_manager connection is: {data_manager.connection}")
+        
         self.config = self.load_config()
+        self.data_manager = data_manager  # For database storage
+        
+        # Additional debug check
+        if self.data_manager is not None:
+            logger.info("✅ LiveMicrostructureTrainer initialized WITH data_manager")
+        else:
+            logger.warning("⚠️ LiveMicrostructureTrainer initialized WITHOUT data_manager")
         
         # Current trading coins from PSC system with enhanced metadata
         self.trading_coins = [
@@ -745,9 +761,38 @@ class LiveMicrostructureTrainer:
         logger.info(f"Collection complete: {self.training_samples} samples, {self.signals_generated} PSC signals")
 
     async def save_psc_signal(self, psc_signal: PSCSignal):
-        """Save PSC-aligned signal to file immediately"""
+        """Save PSC-aligned signal to database (Railway ready) or file fallback"""
         try:
-            # Convert PSCSignal to dict for JSON serialization
+            # Try database storage first (Railway deployment)
+            if self.data_manager:
+                signal_id = self.data_manager.log_psc_signal(
+                    coin=psc_signal.symbol,
+                    price=psc_signal.current_price if hasattr(psc_signal, 'current_price') else 0.0,
+                    ratio=psc_signal.psc_ratio,
+                    confidence=psc_signal.confidence_score,
+                    direction=psc_signal.direction,
+                    exit_estimate=0.0,  # Will be calculated in data_manager
+                    ml_prediction=psc_signal.microstructure_score,
+                    market_conditions=f"Timer: {psc_signal.timer_window}, Leverage: {psc_signal.leverage}x",
+                    ml_features={
+                        'signal_type': 'MICROSTRUCTURE',
+                        'psc_ratio': psc_signal.psc_ratio,
+                        'confidence_score': psc_signal.confidence_score,
+                        'leverage': psc_signal.leverage,
+                        'position_size': psc_signal.position_size,
+                        'timer_window': psc_signal.timer_window,
+                        'signal_strength': psc_signal.signal_strength,
+                        'reasons': psc_signal.reasons,
+                        'microstructure_score': psc_signal.microstructure_score,
+                        'ml_validation': psc_signal.ml_validation,
+                        'superp_enabled': self.superp_enabled,
+                        'system_version': 'PSC_ALIGNED_v1.0'
+                    }
+                )
+                logger.info(f"📊 Microstructure signal logged to database: {psc_signal.symbol} {psc_signal.direction} (ID: {signal_id})")
+                return
+            
+            # Fallback to JSON file storage for local development
             timestamp_info = self.get_current_timestamp()
             signal_dict = {
                 **timestamp_info,
@@ -784,7 +829,7 @@ class LiveMicrostructureTrainer:
             with open(signals_file, 'w') as f:
                 json.dump(existing_signals, f, indent=2, default=str)
             
-            logger.info(f"PSC signal saved: {psc_signal.symbol} {psc_signal.direction}")
+            logger.info(f"PSC signal saved to JSON: {psc_signal.symbol} {psc_signal.direction}")
             
         except Exception as e:
             logger.error(f"Error saving PSC signal: {e}")
