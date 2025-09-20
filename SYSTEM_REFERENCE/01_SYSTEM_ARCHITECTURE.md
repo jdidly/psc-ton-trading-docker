@@ -9,16 +9,21 @@
 ```
 PSC Trading System Architecture
 ├── 🎯 CORE TRADING ENGINE
-│   ├── psc_ton_system.py (Main Bot)
-│   ├── Timer-Based Trading (10-min cycles)
+│   ├── psc_ton_system.py (Enhanced Main Bot)
+│   ├── Superp No-Liquidation Technology (10-min cycles)
+│   ├── Quality-Based Signal Generation (4/5 criteria required)
+│   ├── Dynamic Position Creation (quality multipliers)
 │   ├── Bidirectional Signals (LONG/SHORT)
 │   └── Telegram Integration
 │
-├── 🧠 MACHINE LEARNING LAYER
-│   ├── src/ml_engine.py (Prediction Engine)
+├── 🧠 ENHANCED ML LAYER
+│   ├── src/ml_engine.py (Advanced Prediction Engine)
+│   ├── Real Market Data Integration (Binance API + CoinGecko)
+│   ├── 5-Criteria Quality Filtering System
+│   ├── Dynamic Position Sizing (0.5x-2.0x multipliers)
 │   ├── Continuous Monitoring (45-sec cycles)
-│   ├── Real Data Training
-│   └── Confidence Scoring
+│   ├── Enhanced Confidence Scoring (raised thresholds)
+│   └── Superp Timer Integration
 │
 ├── 📊 TECHNICAL ANALYSIS
 │   ├── tradingview_integration.py
@@ -90,9 +95,38 @@ PSC Trading System Architecture
 8. Result Logging (performance tracking)
 ```
 
-### **2. ML Prediction Engine (`src/ml_engine.py`)**
+### **2. Enhanced ML Prediction Engine (`src/ml_engine.py`)**
 
-**Role**: Intelligent prediction system that validates trading opportunities
+**Role**: Advanced prediction system with real market data and 5-criteria quality filtering
+
+**Major Enhancements**:
+- **Real Market Data Integration**: Live feeds from Binance API and CoinGecko
+- **5-Criteria Quality System**: Requires 4/5 criteria for signal generation
+- **Dynamic Position Sizing**: Quality-based multipliers (0.5x-2.0x)
+- **Enhanced Confidence Scoring**: Raised thresholds for better quality
+- **Superp Timer Integration**: Full compatibility with no-liquidation technology
+
+**Quality Criteria Flow**:
+```python
+# Enhanced ML Signal Generation
+1. Real Market Data Collection (Binance API + CoinGecko)
+   ↓
+2. High Small-Move Confidence Check (25%+ threshold)
+   ↓
+3. Profitable Expectation Validation (asset-specific minimums)
+   ↓
+4. Strong Overall Confidence (18%+ enhanced threshold)
+   ↓
+5. PSC Ratio Threshold Validation
+   ↓
+6. Timer Advantage Assessment (Superp cycle optimization)
+   ↓
+7. Quality Score Calculation (4/5 criteria required)
+   ↓
+8. Dynamic Position Sizing (based on criteria met)
+   ↓
+9. Signal Generation (LONG/SHORT with quality multiplier)
+```
 
 **Core Capabilities**:
 - **Real-Time Predictions**: Continuous market scanning every 45 seconds

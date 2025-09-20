@@ -12,23 +12,28 @@
 
 The PSC Trading System is a next-generation autonomous trading platform that combines:
 
-- 🧠 **Machine Learning Predictions** - Real-time market analysis with continuous learning
+- 🌐 **Real Market Data Feeds** - Live integration with Binance API and CoinGecko for accurate pricing
+- 🧠 **Advanced ML Predictions** - 5-criteria quality filtering system with enhanced confidence scoring
+- 🎯 **Dynamic Position Sizing** - Intelligent sizing based on signal quality (0.5x-2.0x multipliers)
+- ⏰ **Superp Timer Technology** - 10-minute trading cycles with no-liquidation guarantee
 - 🗄️ **Unified Database Architecture** - SQLite-powered data management with real-time queries  
 - 📱 **Telegram Bot Integration** - Complete remote control and monitoring
 - 📊 **Real-time Dashboard** - Live analytics and performance tracking
-- 🛡️ **Zero Liquidation Risk** - Revolutionary Superp technology for maximum safety
-- ⚡ **High-Frequency Operations** - Optimized for small-move profit capture (0.12-0.20%)
+- ⚡ **High-Quality Operations** - Quality-over-quantity approach with enhanced signal filtering
 
 ### **Key Features**
+- ✅ **Real Market Data Integration**: Live data feeds from Binance API and CoinGecko
+- ✅ **Advanced Signal Filtering**: 5-criteria quality system (requires 4/5 to generate signals)
+- ✅ **Dynamic Position Sizing**: Intelligent position sizing with 0.5x-2.0x multipliers
+- ✅ **Superp No-Liquidation Technology**: Timer-based 10-minute trading cycles with leverage decay
+- ✅ **Enhanced ML Predictions**: Confidence-based validation with continuous learning
 - ✅ **Integrated Accuracy System**: Multi-layer signal validation with consensus scoring
 - ✅ **Bidirectional Trading**: Automated LONG/SHORT position management
 - ✅ **Database-Integrated**: Real-time data storage and retrieval (replaced CSV files)
 - ✅ **Smart Prediction Optimization**: Intelligent filtering reduces database load by 50-80%
 - ✅ **Production Optimized**: Clean, efficient Docker deployment with lean data management
 - ✅ **Telegram Control**: Complete bot management via `/trades`, `/performance`, `/stats`
-- ✅ **ML Validation**: Every trade validated by machine learning predictions
-- ✅ **Risk Management**: Dynamic leverage with zero liquidation possibility
-- ✅ **Quality Gates**: 65% minimum confidence threshold with multi-component validation
+- ✅ **Quality Gates**: Enhanced confidence thresholds with multi-component validation
 
 ---
 
@@ -37,12 +42,15 @@ The PSC Trading System is a next-generation autonomous trading platform that com
 ```
 🐳 Docker Container
 ├── 🎯 PSC Trading Engine (psc_ton_system.py)
-├── 🧠 Integrated Accuracy System (Multi-Layer Signal Validation)
-│   ├── PSC Signal Generation (Layer 1)
-│   ├── ML Engine Enhancement (Layer 2) 
-│   ├── TradingView Technical Validation (Layer 3)
-│   ├── ML Microstructure Confirmation (Layer 4)
-│   └── Enhanced Prediction Validation (Layer 5)
+├── 🌐 Real Market Data Layer (Binance API + CoinGecko)
+├── 🧠 Enhanced ML System (5-Criteria Quality Filtering)
+│   ├── High Small-Move Confidence (25%+ micro-movement prediction)
+│   ├── Profitable Expectation (Minimum return thresholds)
+│   ├── Strong Overall Confidence (Enhanced ML predictions)
+│   ├── PSC Ratio Threshold (Price-Signal-Confidence validation)
+│   └── Timer Advantage (Superp 10-minute cycle optimization)
+├── ⏰ Superp Timer Technology (No-Liquidation 10-min Cycles)
+├── 📏 Dynamic Position Sizing (0.5x-2.0x Quality Multipliers)
 ├── 🗄️ Database Layer (SQLite + Real-time Queries)
 ├── 📱 Telegram Bot (Database-Integrated Commands)
 ├── 📊 Web Dashboard (Live Data Display)

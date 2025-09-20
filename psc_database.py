@@ -638,6 +638,82 @@ class PSCDatabase:
             logger.error(f"Error getting ML predictions: {e}")
             return pd.DataFrame()
 
+    def get_trade_statistics(self) -> Dict:
+        """Get comprehensive trade statistics for Telegram bot compatibility"""
+        try:
+            # Get all trades from database
+            trades_query = """
+                SELECT profit_pct, status, created_at 
+                FROM trades 
+                WHERE status IN ('COMPLETED', 'CLOSED')
+            """
+            trades = self.execute_query(trades_query)
+            
+            if not trades:
+                return {
+                    'total_trades': 0,
+                    'profitable_trades': 0,
+                    'success_rate': 0.0,
+                    'total_pnl': 0.0,
+                    'avg_profit': 0.0,
+                    'avg_loss': 0.0,
+                    'max_profit': 0.0,
+                    'max_loss': 0.0
+                }
+            
+            # Calculate statistics
+            total_trades = len(trades)
+            profitable_trades = len([t for t in trades if t['profit_pct'] > 0])
+            success_rate = (profitable_trades / total_trades * 100) if total_trades > 0 else 0
+            
+            profit_pcts = [t['profit_pct'] for t in trades]
+            total_pnl = sum(profit_pcts)
+            
+            profitable_pcts = [p for p in profit_pcts if p > 0]
+            losing_pcts = [p for p in profit_pcts if p < 0]
+            
+            return {
+                'total_trades': total_trades,
+                'profitable_trades': profitable_trades,
+                'success_rate': success_rate,
+                'total_pnl': total_pnl,
+                'avg_profit': sum(profitable_pcts) / len(profitable_pcts) if profitable_pcts else 0,
+                'avg_loss': sum(losing_pcts) / len(losing_pcts) if losing_pcts else 0,
+                'max_profit': max(profit_pcts) if profit_pcts else 0,
+                'max_loss': min(profit_pcts) if profit_pcts else 0
+            }
+        except Exception as e:
+            logger.error(f"Error getting trade statistics: {e}")
+            return {
+                'total_trades': 0,
+                'profitable_trades': 0,
+                'success_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_profit': 0.0,
+                'avg_loss': 0.0,
+                'max_profit': 0.0,
+                'max_loss': 0.0
+            }
+
+    def get_recent_trades(self, limit: int = 10) -> List[Dict]:
+        """Get recent trades for display in Telegram bot"""
+        try:
+            query = """
+                SELECT id, coin, direction, entry_price, exit_price, profit_pct, 
+                       confidence, status, created_at, trade_type
+                FROM trades 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """
+            trades = self.execute_query(query, (limit,))
+            
+            # Convert to list of dictionaries for compatibility
+            return [dict(trade) for trade in trades] if trades else []
+            
+        except Exception as e:
+            logger.error(f"Error getting recent trades: {e}")
+            return []
+
 # Example usage and testing
 if __name__ == "__main__":
     # Test the database

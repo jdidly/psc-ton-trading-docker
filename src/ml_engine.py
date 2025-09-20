@@ -1165,58 +1165,228 @@ class MLEngine:
     def _load_from_database(self):
         """Load prediction history from database"""
         try:
-            # Get historical ML signals from database - load ALL signals for training
+            # Check if data_manager is available and connected
+            if not self.data_manager:
+                logger.warning("No data manager available for ML history loading")
+                return 0
+                
+            # Enhanced: Load ALL signals for comprehensive training (ML + PSC signals)
+            # This gives us much more training data (2888 PSC + 415 ML = 3303+ total)
             signals = self.data_manager.execute_query(
-                "SELECT * FROM signals WHERE signal_type IN ('ML_SIGNAL', 'ML_HISTORICAL') ORDER BY created_at DESC LIMIT 5000"
+                "SELECT * FROM signals WHERE signal_type IN ('ML_SIGNAL', 'ML_HISTORICAL', 'PSC_SIGNAL') ORDER BY created_at DESC LIMIT 10000"
             )
             
+            if not signals:
+                logger.info("No historical ML signals found in database")
+                return 0
+            
             database_loaded = 0
+            ml_loaded = 0
+            psc_loaded = 0
             
             for signal in signals:
                 try:
-                    # Convert database signal to prediction format
+                    # Enhanced: Convert both ML and PSC signals to prediction format
+                    signal_type = signal.get('signal_type', 'ML_SIGNAL')
+                    
+                    # Base prediction structure
                     prediction = {
                         'timestamp': signal['created_at'],
                         'symbol': signal['coin'],
                         'predicted_direction': signal['direction'],
                         'confidence': signal['confidence'],
-                        'win_probability': signal['ml_prediction'],
-                        'expected_return': 0.0,  # Can be extracted from ml_features if needed
-                        'model_used': 'database_historical',
-                        'features_used': 25,
                         'price': signal['price'],
-                        'ton_price': 0.0,  # Can be extracted from ml_features if needed
                         'ratio': signal.get('ratio', 0.0),
-                        'source': 'database_migration',
-                        'signal_id': signal['id']
+                        'signal_id': signal['id'],
+                        'signal_type': signal_type
                     }
+                    
+                    # Handle different signal types
+                    if signal_type == 'PSC_SIGNAL':
+                        # PSC signals: Use PSC-specific data
+                        prediction.update({
+                            'win_probability': signal['confidence'],  # PSC confidence as win probability
+                            'expected_return': min(0.20, signal['confidence'] * 0.30),  # Estimate based on PSC confidence
+                            'model_used': 'psc_historical',
+                            'features_used': 15,  # PSC uses fewer features
+                            'ton_price': signal.get('ton_price', 3.1),
+                            'source': 'psc_historical'
+                        })
+                    else:
+                        # ML signals: Use ML-specific data
+                        prediction.update({
+                            'win_probability': signal['ml_prediction'],
+                            'expected_return': 0.0,  # Can be extracted from ml_features if needed
+                            'model_used': 'ml_historical',
+                            'features_used': 25,
+                            'ton_price': 0.0,  # Can be extracted from ml_features if needed
+                            'source': 'ml_historical'
+                        })
                     
                     # Extract additional data from ml_features JSON if available
                     if signal.get('ml_features'):
                         try:
                             import json
-                            features = json.loads(signal['ml_features']) if isinstance(signal['ml_features'], str) else signal['ml_features']
+                            features_data = signal['ml_features']
+                            
+                            # Ensure the data is clean and parseable
+                            if isinstance(features_data, str):
+                                # Clean any potential XML/HTML entities or malformed content
+                                features_data = features_data.strip()
+                                if features_data.startswith('{') or features_data.startswith('['):
+                                    features = json.loads(features_data)
+                                else:
+                                    # Skip non-JSON data
+                                    features = {}
+                            else:
+                                features = features_data
+                                
                             prediction.update({
                                 'expected_return': features.get('expected_return', 0.0),
                                 'ton_price': features.get('ton_price', 0.0),
                                 'ratio': features.get('ratio', signal.get('ratio', 0.0)),
                                 'model_used': features.get('model_used', 'database_historical')
                             })
-                        except:
-                            pass  # Continue with basic data if JSON parsing fails
+                        except (json.JSONDecodeError, ValueError, TypeError) as json_error:
+                            logger.warning(f"⚠️ ML features parsing error for signal {signal.get('id', 'unknown')}: {json_error}")
+                            # Continue with basic data if JSON parsing fails
+                        except Exception as parse_error:
+                            logger.warning(f"⚠️ ML features data error for signal {signal.get('id', 'unknown')}: {parse_error}")
+                            # Continue with basic data if any other parsing fails
                     
                     self.predictions.append(prediction)
                     database_loaded += 1
+                    
+                    # Track signal type counts
+                    if signal_type == 'PSC_SIGNAL':
+                        psc_loaded += 1
+                    else:
+                        ml_loaded += 1
                     
                 except Exception as pred_error:
                     logger.warning(f"Error processing database signal: {pred_error}")
                     continue
             
-            logger.info(f"📊 Loaded {database_loaded} predictions from database")
-            return database_loaded
+            # Also load validation data and completed trades for additional training examples
+            validation_loaded = self._load_validation_data()
+            trades_loaded = self._load_trade_outcomes()
+            total_loaded = database_loaded + validation_loaded + trades_loaded
+            
+            logger.info(f"📊 Enhanced dataset loaded: {total_loaded} total predictions")
+            logger.info(f"   - ML signals: {ml_loaded}")
+            logger.info(f"   - PSC signals: {psc_loaded}")
+            logger.info(f"   - Validation data: {validation_loaded}")
+            logger.info(f"   - Completed trades: {trades_loaded}")
+            if ml_loaded > 0:
+                logger.info(f"🎯 Training dataset increased by {((psc_loaded + validation_loaded + trades_loaded)/ml_loaded)*100:.0f}% with historical data")
+            return total_loaded
             
         except Exception as e:
             logger.error(f"Error loading from database: {e}")
+            return 0
+    
+    def _load_validation_data(self):
+        """Load validated prediction outcomes for enhanced training"""
+        try:
+            if not self.data_manager:
+                return 0
+                
+            # Get validation data with actual outcomes
+            validations = self.data_manager.execute_query(
+                "SELECT * FROM validation WHERE actual_outcome IS NOT NULL ORDER BY created_at DESC LIMIT 2000"
+            )
+            
+            if not validations:
+                return 0
+                
+            validation_loaded = 0
+            
+            for validation in validations:
+                try:
+                    # Convert validation to training example
+                    prediction = {
+                        'timestamp': validation['created_at'],
+                        'symbol': 'Unknown',  # Will extract from signal_id if needed
+                        'predicted_direction': validation['predicted_outcome'],
+                        'confidence': validation['predicted_confidence'],
+                        'win_probability': validation['predicted_confidence'],
+                        'expected_return': validation.get('actual_profit_pct', 0.0),
+                        'model_used': 'validation_historical',
+                        'features_used': 20,
+                        'price': 0.0,  # Not stored in validation table
+                        'ratio': 0.0,  # Not stored in validation table  
+                        'ton_price': 3.1,
+                        'source': 'validation_data',
+                        'signal_id': f"val_{validation['id']}",
+                        'actual_outcome': validation['actual_outcome'],  # Win/Loss for supervised learning
+                        'signal_type': 'VALIDATION',
+                        'accuracy_score': validation.get('accuracy_score', 0.0)
+                    }
+                    
+                    self.predictions.append(prediction)
+                    validation_loaded += 1
+                    
+                except Exception as val_error:
+                    logger.warning(f"Error processing validation data: {val_error}")
+                    continue
+                    
+            return validation_loaded
+            
+        except Exception as e:
+            logger.warning(f"Could not load validation data: {e}")
+            return 0
+    
+    def _load_trade_outcomes(self):
+        """Load completed trades with actual profit/loss outcomes"""
+        try:
+            if not self.data_manager:
+                return 0
+                
+            # Get completed trades with outcomes
+            trades = self.data_manager.execute_query(
+                "SELECT * FROM trades WHERE status = 'CLOSED' AND successful IS NOT NULL ORDER BY created_at DESC LIMIT 1000"
+            )
+            
+            if not trades:
+                return 0
+                
+            trades_loaded = 0
+            
+            for trade in trades:
+                try:
+                    # Convert trade to training example
+                    prediction = {
+                        'timestamp': trade['created_at'],
+                        'symbol': trade['coin'],
+                        'predicted_direction': trade['direction'],
+                        'confidence': trade['confidence'],
+                        'win_probability': trade['confidence'],
+                        'expected_return': trade['profit_pct'],
+                        'model_used': 'trade_historical',
+                        'features_used': 18,
+                        'price': trade['entry_price'],
+                        'ratio': trade.get('ratio', 0.0),
+                        'ton_price': 3.1,  # Default
+                        'source': 'trade_outcomes',
+                        'signal_id': f"trade_{trade['id']}",
+                        'actual_outcome': 'WIN' if trade['successful'] else 'LOSS',
+                        'actual_profit_pct': trade['profit_pct'],
+                        'signal_type': 'TRADE_OUTCOME',
+                        'trade_duration': trade.get('trade_duration_minutes', 0),
+                        'exit_reason': trade.get('exit_reason', 'UNKNOWN')
+                    }
+                    
+                    self.predictions.append(prediction)
+                    trades_loaded += 1
+                    
+                except Exception as trade_error:
+                    logger.warning(f"Error processing trade data: {trade_error}")
+                    continue
+                    
+            return trades_loaded
+            
+        except Exception as e:
+            logger.warning(f"Could not load trade outcomes: {e}")
             return 0
     
     def _load_from_files(self):

@@ -232,17 +232,27 @@ class PSCDataManager:
     
     def get_session_stats(self) -> Dict:
         """Get current session statistics"""
-        # Get today's database performance
-        today_performance = self.db.get_daily_performance()
-        
-        # Combine with session stats
-        return {
-            **self.session_stats,
-            'daily_performance': today_performance,
-            'session_duration_hours': self._get_session_duration_hours(),
-            'signals_per_hour': self._calculate_signals_per_hour(),
-            'success_rate': self._calculate_session_success_rate()
-        }
+        try:
+            # Get today's database performance
+            today_performance = self.db.get_daily_performance()
+            
+            # Combine with session stats
+            return {
+                **self.session_stats,
+                'daily_performance': today_performance,
+                'session_duration_hours': self._get_session_duration_hours(),
+                'signals_per_hour': self._calculate_signals_per_hour(),
+                'success_rate': self._calculate_session_success_rate()
+            }
+        except Exception as e:
+            logger.error(f"Error getting session stats: {e}")
+            return {
+                **self.session_stats,
+                'daily_performance': {'signals': 0, 'trades': 0, 'accuracy': 0.0},
+                'session_duration_hours': self._get_session_duration_hours(),
+                'signals_per_hour': 0,
+                'success_rate': 0.0
+            }
     
     def get_system_health(self) -> Dict:
         """Get system health metrics for dashboard"""
@@ -324,15 +334,36 @@ class PSCDataManager:
     
     def get_recent_trades(self, limit: int = 5) -> list:
         """Get recent trades for display (Telegram bot compatibility)"""
-        return self.db.get_recent_trades(limit)
+        try:
+            return self.db.get_recent_trades(limit)
+        except Exception as e:
+            logger.error(f"Error getting recent trades: {e}")
+            return []  # Return empty list on error
     
     def get_all_trades_for_performance(self) -> list:
         """Get all trades for performance analysis"""
-        return self.db.get_all_trades_for_performance()
+        try:
+            return self.db.get_all_trades_for_performance()
+        except Exception as e:
+            logger.error(f"Error getting trades for performance: {e}")
+            return []  # Return empty list on error
     
     def get_trade_statistics(self) -> Dict:
         """Get comprehensive trade statistics"""
-        return self.db.get_trade_statistics()
+        try:
+            return self.db.get_trade_statistics()
+        except Exception as e:
+            logger.error(f"Error getting trade statistics: {e}")
+            return {
+                'total_trades': 0,
+                'profitable_trades': 0,
+                'success_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_profit': 0.0,
+                'avg_loss': 0.0,
+                'max_profit': 0.0,
+                'max_loss': 0.0
+            }  # Return default stats on error
     
     def get_database_stats(self) -> Dict:
         """Get database statistics"""

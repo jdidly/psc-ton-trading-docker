@@ -14,6 +14,9 @@ from bs4 import BeautifulSoup
 import json
 import time
 
+# Import real market data provider
+from real_market_data import RealMarketDataProvider
+
 logger = logging.getLogger(__name__)
 
 class TechnicalAnalysis:
@@ -40,11 +43,20 @@ class TechnicalAnalysis:
 class TradingViewIntegration:
     """TradingView API Integration for PSC System"""
     
-    def __init__(self):
+    def __init__(self, use_real_data=True):
         self.base_url = "https://www.tradingview.com"
         self.session = None
         self.cache = {}
         self.cache_duration = 60  # 1 minute cache
+        self.use_real_data = use_real_data
+        
+        # Initialize real market data provider
+        if self.use_real_data:
+            self.market_data_provider = RealMarketDataProvider()
+            logger.info("✅ Real market data provider initialized")
+        else:
+            self.market_data_provider = None
+            logger.info("⚠️ Using simulated market data")
         self.request_delay = 1.5  # 1.5 seconds between requests (faster for multiple calls)
         self.last_request = 0
         
@@ -85,6 +97,10 @@ class TradingViewIntegration:
         if self.session:
             await self.session.close()
             self.session = None
+            
+        # Close real market data provider
+        if self.market_data_provider:
+            await self.market_data_provider.close()
     
     def _respect_rate_limit(self):
         """Ensure we don't exceed rate limits"""
@@ -384,8 +400,20 @@ class TradingViewIntegration:
                         coin_data['timeframes'][timeframe]['bias_direction'] = bias['direction']
                         coin_data['timeframes'][timeframe]['bias_strength'] = bias['strength']
                     else:
-                        logger.warning(f"⚠️ No data for {coin} {timeframe}")
-                        coin_data['timeframes'][timeframe] = None
+                        logger.warning(f"⚠️ No data for {coin} {timeframe} - using fallback")
+                        # Provide fallback data instead of None to prevent N/A values
+                        coin_data['timeframes'][timeframe] = {
+                            'summary': 'neutral',
+                            'ma_score': 0,
+                            'osc_score': 0,
+                            'overall_score': 0,
+                            'ma_recommendation': 'neutral',
+                            'osc_recommendation': 'neutral',
+                            'bias_direction': 'neutral',
+                            'bias_strength': 0.0
+                        }
+                        timeframe_scores.append(0)
+                        timeframe_summaries.append('neutral')
                 
                 # Calculate consensus across timeframes
                 if timeframe_scores:
@@ -623,6 +651,7 @@ class TradingViewIntegration:
         """
         Get TradingView analysis for a single coin across all timeframes
         Optimized for signal validation - only fetches data for the specific coin needed
+        Enhanced with real market data integration
         """
         logger.info(f"📊 Getting optimized TradingView analysis for {coin}")
         
@@ -631,81 +660,134 @@ class TradingViewIntegration:
             'timeframes': {},
             'consensus': {},
             'trade_signals': {},
+            'real_market_data': {},
+            'market_quality_score': 0.0,
             'timestamp': datetime.now().isoformat()
         }
         
-        # Analyze each timeframe for this specific coin
-        timeframe_scores = []
-        timeframe_summaries = []
+        # Fetch real market data first
+        if self.use_real_data and self.market_data_provider:
+            try:
+                real_data = await self.market_data_provider.get_market_data(coin)
+                if real_data:
+                    coin_data['real_market_data'] = {
+                        'price': real_data.price,
+                        'volume_24h': real_data.volume_24h,
+                        'change_24h': real_data.change_24h,
+                        'market_cap': real_data.market_cap,
+                        'rsi': real_data.rsi,
+                        'sma_20': real_data.sma_20,
+                        'sma_50': real_data.sma_50,
+                        'bb_upper': real_data.bb_upper,
+                        'bb_lower': real_data.bb_lower,
+                        'volume_sma': real_data.volume_sma
+                    }
+                    coin_data['market_quality_score'] = self.market_data_provider.get_market_quality_score(real_data)
+                    logger.info(f"✅ Real market data loaded for {coin}: ${real_data.price:.6f} (Quality: {coin_data['market_quality_score']:.2f})")
+                else:
+                    logger.warning(f"⚠️ No real market data available for {coin}")
+            except Exception as market_error:
+                logger.error(f"❌ Real market data error for {coin}: {market_error}")
+                coin_data['market_quality_score'] = 0.0
         
-        for timeframe in self.timeframes:
-            logger.info(f"📊 Fetching {coin} {timeframe} analysis...")
+        # Add error recovery mechanism for parsing issues
+        try:
+            # Analyze each timeframe for this specific coin
+            timeframe_scores = []
+            timeframe_summaries = []
             
-            analysis = await self.get_technical_analysis(coin, timeframe)
+            for timeframe in self.timeframes:
+                logger.info(f"📊 Fetching {coin} {timeframe} analysis...")
+                
+                analysis = await self.get_technical_analysis(coin, timeframe)
+                
+                if analysis:
+                    coin_data['timeframes'][timeframe] = {
+                        'summary': analysis.summary,
+                        'ma_score': analysis.ma_score,
+                        'osc_score': analysis.osc_score,
+                        'overall_score': analysis.overall_score,
+                        'ma_recommendation': analysis.ma_recommendation,
+                        'osc_recommendation': analysis.osc_recommendation
+                    }
+                    
+                    timeframe_scores.append(analysis.overall_score)
+                    timeframe_summaries.append(analysis.summary)
+                    
+                    # Get bias for this timeframe
+                    bias = self.get_bias_confirmation(analysis)
+                    coin_data['timeframes'][timeframe]['bias_direction'] = bias['direction']
+                    coin_data['timeframes'][timeframe]['bias_strength'] = bias['strength']
+                else:
+                    logger.warning(f"⚠️ No data for {coin} {timeframe}")
+                    coin_data['timeframes'][timeframe] = None
             
-            if analysis:
-                coin_data['timeframes'][timeframe] = {
-                    'summary': analysis.summary,
-                    'ma_score': analysis.ma_score,
-                    'osc_score': analysis.osc_score,
-                    'overall_score': analysis.overall_score,
-                    'ma_recommendation': analysis.ma_recommendation,
-                    'osc_recommendation': analysis.osc_recommendation
+            # Calculate consensus across timeframes
+            if timeframe_scores:
+                avg_score = sum(timeframe_scores) / len(timeframe_scores)
+                
+                # Determine consensus direction
+                bullish_count = sum(1 for summary in timeframe_summaries if summary == 'buy')
+                bearish_count = sum(1 for summary in timeframe_summaries if summary == 'sell')
+                neutral_count = len(timeframe_summaries) - bullish_count - bearish_count
+                
+                # Calculate consensus
+                total_timeframes = len(self.timeframes)
+                if bullish_count > bearish_count and bullish_count > neutral_count:
+                    direction = 'BUY'
+                    strength = bullish_count / total_timeframes
+                elif bearish_count > bullish_count and bearish_count > neutral_count:
+                    direction = 'SELL' 
+                    strength = bearish_count / total_timeframes
+                else:
+                    direction = 'NEUTRAL'
+                    strength = max(bullish_count, bearish_count, neutral_count) / total_timeframes
+                
+                coin_data['consensus'] = {
+                    'direction': direction,
+                    'strength': strength,
+                    'confidence': strength * 0.8 + (abs(avg_score) / 1.0) * 0.2,
+                    'average_score': avg_score,
+                    'timeframe_agreement': strength
                 }
                 
-                timeframe_scores.append(analysis.overall_score)
-                timeframe_summaries.append(analysis.summary)
+                # Trade signals enhanced with real market data
+                timeframe_alignment = strength >= 0.67  # 2/3 timeframes agree
+                market_quality_factor = coin_data['market_quality_score']
                 
-                # Get bias for this timeframe
-                bias = self.get_bias_confirmation(analysis)
-                coin_data['timeframes'][timeframe]['bias_direction'] = bias['direction']
-                coin_data['timeframes'][timeframe]['bias_strength'] = bias['strength']
-            else:
-                logger.warning(f"⚠️ No data for {coin} {timeframe}")
-                coin_data['timeframes'][timeframe] = None
+                # Adjust entry recommendations based on market quality
+                base_confidence = strength
+                enhanced_confidence = base_confidence * (0.7 + 0.3 * market_quality_factor)
+                
+                entry_recommendation = 'buy' if direction == 'BUY' and enhanced_confidence >= 0.6 and market_quality_factor >= 0.3 else \
+                                     'sell' if direction == 'SELL' and enhanced_confidence >= 0.6 and market_quality_factor >= 0.3 else 'hold'
+                
+                coin_data['trade_signals'] = {
+                    'timeframe_alignment': timeframe_alignment,
+                    'entry_recommendation': entry_recommendation,
+                    'confidence_level': 'high' if enhanced_confidence >= 0.8 and market_quality_factor >= 0.5 else \
+                                      'medium' if enhanced_confidence >= 0.6 and market_quality_factor >= 0.3 else 'low',
+                    'market_quality_factor': market_quality_factor,
+                    'enhanced_confidence': enhanced_confidence,
+                    'real_data_influence': 'active' if self.use_real_data else 'inactive'
+                }
+            
+            logger.info(f"✅ Single coin analysis complete for {coin}: {coin_data['consensus'].get('direction', 'N/A')}")
+            return coin_data
         
-        # Calculate consensus across timeframes
-        if timeframe_scores:
-            avg_score = sum(timeframe_scores) / len(timeframe_scores)
-            
-            # Determine consensus direction
-            bullish_count = sum(1 for summary in timeframe_summaries if summary == 'buy')
-            bearish_count = sum(1 for summary in timeframe_summaries if summary == 'sell')
-            neutral_count = len(timeframe_summaries) - bullish_count - bearish_count
-            
-            # Calculate consensus
-            total_timeframes = len(self.timeframes)
-            if bullish_count > bearish_count and bullish_count > neutral_count:
-                direction = 'BUY'
-                strength = bullish_count / total_timeframes
-            elif bearish_count > bullish_count and bearish_count > neutral_count:
-                direction = 'SELL' 
-                strength = bearish_count / total_timeframes
-            else:
-                direction = 'NEUTRAL'
-                strength = max(bullish_count, bearish_count, neutral_count) / total_timeframes
-            
-            coin_data['consensus'] = {
-                'direction': direction,
-                'strength': strength,
-                'confidence': strength * 0.8 + (abs(avg_score) / 1.0) * 0.2,
-                'average_score': avg_score,
-                'timeframe_agreement': strength
+        except Exception as analysis_error:
+            logger.error(f"❌ TradingView analysis error for {coin}: {analysis_error}")
+            # Return minimal data structure to prevent crashes
+            return {
+                'symbol': coin,
+                'timeframes': {'1m': None, '5m': None, '10m': None},
+                'consensus': {'direction': 'NEUTRAL', 'strength': 0, 'confidence': 0},
+                'trade_signals': {'timeframe_alignment': False, 'entry_recommendation': 'hold', 'real_data_influence': 'error'},
+                'real_market_data': {},
+                'market_quality_score': 0.0,
+                'timestamp': datetime.now().isoformat(),
+                'error': str(analysis_error)
             }
-            
-            # Trade signals
-            timeframe_alignment = strength >= 0.67  # 2/3 timeframes agree
-            entry_recommendation = 'buy' if direction == 'BUY' and strength >= 0.6 else \
-                                 'sell' if direction == 'SELL' and strength >= 0.6 else 'hold'
-            
-            coin_data['trade_signals'] = {
-                'timeframe_alignment': timeframe_alignment,
-                'entry_recommendation': entry_recommendation,
-                'confidence_level': 'high' if strength >= 0.8 else 'medium' if strength >= 0.6 else 'low'
-            }
-        
-        logger.info(f"✅ Single coin analysis complete for {coin}: {coin_data['consensus'].get('direction', 'N/A')}")
-        return coin_data
 
     def enhance_psc_with_single_coin_analysis(self, coin_analysis: Dict, psc_confidence: float, psc_direction: str) -> Dict:
         """
@@ -750,6 +832,13 @@ class TradingViewIntegration:
         
         enhanced_confidence = min(psc_confidence * confidence_multiplier, 0.95)
         
+        # Extract timeframe summaries from coin analysis
+        timeframe_summary = {}
+        if 'timeframes' in coin_analysis:
+            for tf, data in coin_analysis['timeframes'].items():
+                if data and 'summary' in data:
+                    timeframe_summary[tf] = data['summary'].upper()
+        
         return {
             'enhanced_confidence': enhanced_confidence,
             'confidence_multiplier': confidence_multiplier,
@@ -758,6 +847,8 @@ class TradingViewIntegration:
             'tv_strength': tv_strength,
             'tv_confidence': tv_confidence,
             'trade_signals': trade_signals,
+            'timeframe_summary': timeframe_summary,
+            'consensus_data': consensus,
             'recommendation': 'STRONG' if alignment_score >= 0.8 else 'MODERATE' if alignment_score >= 0.6 else 'WEAK'
         }
         

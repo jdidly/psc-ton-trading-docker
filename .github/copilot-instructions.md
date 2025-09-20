@@ -45,4 +45,6 @@ When making significant system changes:
 - ✅ All core components tested and operational
 - ✅ Database-only operation implemented (no CSV/JSON fallbacks)
 - ✅ Complete learning pipeline: Signal → Prediction → Validation → Learning
+- ✅ Timer-based validation system: Auto-validates predictions after 10-minute Superp cycles
+- ✅ ML training data enhanced 8x: 415 → 3,323 examples (ML + PSC + validation + trade data)
 - 🔄 Continuous learning from historical database data active
